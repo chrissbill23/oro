@@ -37,7 +37,7 @@ public interface MessageApi {
     @GetMapping("/messages/{messageId}")
     MessageDTO get(@Parameter(hidden = true) Actor actor, @PathVariable UUID messageId);
 
-    @Operation(summary = "React to a message", description = "With one of the reactions of Oro; once per emoji")
+    @Operation(summary = "React to a message", description = "With one emoji (any, skin tones and flags included); once per emoji")
     @PutMapping("/messages/{messageId}/reactions/{emoji}")
     MessageDTO react(@Parameter(hidden = true) Actor actor, @PathVariable UUID messageId, @PathVariable String emoji);
 

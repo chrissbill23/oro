@@ -173,7 +173,7 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
     }
 
     @Test
-    void membersReactWithTheReactionsOfOro() {
+    void membersReactWithEmojis() {
         Conversation group = conversations.createGroup(jordanActor, "Design", null, List.of(amara));
         UUID message = say(jordanActor, group.getId(), "New tokens are live").message().getId();
 
@@ -189,7 +189,11 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
 
         messages.react(jordanActor, message, "🎉", false);
         assertThat(messages.extras(amaraActor, List.of(message)).reactions().get(message)).hasSize(1);
-        assertThatThrownBy(() -> messages.react(amaraActor, message, "💩", true)).isInstanceOf(IllegalArgumentException.class);
+        // any emoji, not text
+        messages.react(amaraActor, message, "👩🏽‍💻", true);
+        assertThat(messages.extras(amaraActor, List.of(message)).reactions().get(message)).extracting(r -> r.emoji())
+                .containsExactly("👍", "👩🏽‍💻");
+        assertThatThrownBy(() -> messages.react(amaraActor, message, "ok", true)).isInstanceOf(IllegalArgumentException.class);
         // not a member: nothing to react to
         assertThatThrownBy(() -> messages.react(Actor.umoja(kwame, ACME), message, "👍", true)).isInstanceOf(NotFound.class);
         // RLS alone: no reaction as someone else

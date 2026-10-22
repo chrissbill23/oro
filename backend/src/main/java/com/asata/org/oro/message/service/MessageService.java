@@ -36,8 +36,6 @@ import java.util.stream.Collectors;
 public class MessageService {
 
     public static final int MAX_PAGE_SIZE = 100;
-    /** the emojis a member may react with */
-    public static final List<String> REACTIONS = List.of("👍", "❤️", "😂", "🎉", "🙌", "👀", "😮", "🙏", "✅", "🔥");
     public static final int MAX_SEARCH_RESULTS = 30;
 
     private final DbSession session;
@@ -166,13 +164,13 @@ public class MessageService {
     }
 
     /**
-     * The actor gives (on) or takes back a reaction to a message it may read, among {@link #REACTIONS}; the members
+     * The actor gives (on) or takes back a reaction to a message it may read, one emoji ({@link Emojis}); the members
      * see it on their streams (outbox event reaction.changed)
      */
     @Transactional
     public Message react(Actor actor, UUID messageId, String emoji, boolean on) {
-        if (!REACTIONS.contains(emoji)) {
-            throw new IllegalArgumentException("Not one of the reactions: " + String.join(" ", REACTIONS));
+        if (!Emojis.isOne(emoji)) {
+            throw new IllegalArgumentException("A reaction is one emoji");
         }
         session.enterUser(actor);
         Message message = messages.findById(messageId).orElseThrow(() -> new NotFound("Message not found"));
