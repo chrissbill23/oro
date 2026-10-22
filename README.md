@@ -1,2 +1,2 @@
 # oro
-oro messaging service
+oro is an Asata service for messaging reliably and with privacy
