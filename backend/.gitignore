@@ -1,0 +1,9 @@
+target/
+logs/
+.idea/
+*.iml
+.DS_Store
+# local configuration with secrets (database password)
+src/main/resources/application-local.yml
+.env
+.env.local

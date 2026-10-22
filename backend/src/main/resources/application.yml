@@ -1,0 +1,43 @@
+info:
+  app:
+    name: '@project.name@'
+    version: '@project.version@'
+    description: '@project.description@'
+spring:
+  application:
+    name: Oro - Messaging
+  jpa:
+    open-in-view: false
+    hibernate:
+      # the schema is the one of 1_ASATA_DATABASE/CREATE_ORO_TABLES.sql, never generated
+      ddl-auto: none
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      hibernate:
+        query:
+          timeout: 10000
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/asata}
+    # a NOINHERIT login role, member of oro_app and oro_system (see DbSession); never a superuser: it bypasses RLS
+    username: ${SPRING_DATASOURCE_USERNAME:oro_service}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      connection-timeout: 5000
+      validation-timeout: 3000
+oro:
+  outbox:
+    enabled: ${ORO_OUTBOX_ENABLED:true}
+    poll-interval: PT1S
+    batch-size: 100
+    lease: PT30S
+    max-attempts: 10
+    base-backoff: PT1S
+    max-backoff: PT1H
+    retention: P7D
+    purge-interval: PT1H
+  attachments:
+    # 100 MiB; the database refuses more than 2 GiB anyway
+    max-size-bytes: 104857600
+    storage-provider: s3

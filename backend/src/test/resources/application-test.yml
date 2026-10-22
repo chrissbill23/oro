@@ -1,0 +1,12 @@
+# the datasource (a Testcontainers PostgreSQL 17, login oro_service) is set by PostgresIntegrationTest
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 8
+oro:
+  outbox:
+    # the tests run the worker by hand
+    enabled: false
+    lease: PT30S
+    max-attempts: 3
+    base-backoff: PT10S
