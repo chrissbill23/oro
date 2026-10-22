@@ -11,6 +11,8 @@ import com.asata.org.oro.enums.*;
 import com.asata.org.oro.exception.Conflict;
 import com.asata.org.oro.exception.Forbidden;
 import com.asata.org.oro.exception.NotFound;
+import com.asata.org.oro.live.LiveEvents;
+import com.asata.org.oro.message.service.SystemMessages;
 import com.asata.org.oro.outbox.service.OutboxWriter;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -18,11 +20,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * The conversations of a user (role oro_app, under RLS). Personal for an Oro actor, in the organization of the
@@ -39,6 +40,8 @@ public class ConversationService {
     private final ConversationRepository conversations;
     private final ConversationMemberRepository members;
     private final OutboxWriter outbox;
+    private final SystemMessages systemMessages;
+    private final LiveEvents live;
 
     /**
      * The direct conversation of the actor with another identity, created at the first call. Concurrent calls for the
@@ -133,6 +136,7 @@ public class ConversationService {
         ConversationMember member = addMemberRow(group, identityId, MemberRole.MEMBER, shareHistory, actor.identityId());
         outbox.add(actor.product(), "member.added", "conversation", group.getId(),
                 Map.of("conversationId", group.getId(), "memberId", identityId, "addedBy", actor.identityId()));
+        systemMessages.member(group.getId(), actor.product(), SystemMessages.JOINED, identityId, actor.identityId());
         return member;
     }
 
@@ -153,6 +157,7 @@ public class ConversationService {
         end(mine, LeftReason.LEFT);
         outbox.add(actor.product(), "member.left", "conversation", group.getId(),
                 Map.of("conversationId", group.getId(), "memberId", actor.identityId()));
+        systemMessages.member(group.getId(), actor.product(), SystemMessages.LEFT, actor.identityId(), null);
     }
 
     /** removes a member of a group, by the owner or an admin; the owner cannot be removed, an admin only by the owner */
@@ -173,6 +178,7 @@ public class ConversationService {
         end(member, LeftReason.REMOVED);
         outbox.add(actor.product(), "member.removed", "conversation", group.getId(),
                 Map.of("conversationId", group.getId(), "memberId", identityId, "removedBy", actor.identityId()));
+        systemMessages.member(group.getId(), actor.product(), SystemMessages.REMOVED, identityId, actor.identityId());
     }
 
     /** a conversation the actor is an active member of */
@@ -193,23 +199,100 @@ public class ConversationService {
         return members.findActiveMembers(conversation.getId());
     }
 
-    /** the active conversations of the actor in its context, the latest message first, with their unread counts */
+    /**
+     * The active conversations of the actor in its context, the latest message (or the newest conversation) first, with
+     * their unread counts, the other one of a direct conversation, and the last message the actor may read (RLS hides
+     * the ones before its history).
+     */
     @Transactional(readOnly = true)
     public List<ConversationSummary> list(Actor actor) {
         session.enterUser(actor);
-        String query = """
-                SELECT new com.asata.org.oro.conversation.dto.ConversationSummary(c.id, c.type, c.name, c.organizationId,
-                       c.lastMessageSeq, c.lastMessageAt, c.lastMessageSeq - m.lastReadSeq)
-                FROM ConversationMember m JOIN Conversation c ON c.id = m.conversationId
-                WHERE m.userId = :me AND m.leftAt IS NULL AND c.product = :product""";
-        query += actor.organizationId() == null ? " AND c.organizationId IS NULL" : " AND c.organizationId = :organizationId";
-        var typed = em.createQuery(query + " ORDER BY c.lastMessageAt DESC NULLS LAST, c.id", ConversationSummary.class)
-                .setParameter("me", actor.identityId())
-                .setParameter("product", actor.product());
-        if (actor.organizationId() != null) {
-            typed.setParameter("organizationId", actor.organizationId());
+        String sql = """
+                SELECT c.id, c.conversation_type, c.name, c.team_id, c.last_message_seq, c.last_message_at, c.created_at,
+                       c.last_message_seq - m.last_read_seq AS unread, m.muted_until, m.role,
+                       (SELECT count(*) FROM oro_conversation_member x
+                        WHERE x.conversation_id = c.id AND x.left_at IS NULL) AS member_count,
+                       other.external_user_id AS other_user_id,
+                       lm.id AS lm_id, lm.seq AS lm_seq, sender.external_user_id AS lm_sender, lm.message_type AS lm_type,
+                       left(lm.body, 200) AS lm_body,
+                       CASE WHEN lm.message_type = 'system' THEN lm.metadata::text END AS lm_metadata,
+                       lm.deleted_at IS NOT NULL AS lm_deleted, lm.created_at AS lm_created_at
+                FROM oro_conversation_member m
+                JOIN oro_conversation c ON c.id = m.conversation_id
+                LEFT JOIN oro_messaging_identity other ON c.conversation_type = 'direct'
+                     AND other.id = CASE WHEN c.direct_identity_low = m.user_id
+                                         THEN c.direct_identity_high ELSE c.direct_identity_low END
+                LEFT JOIN oro_message lm ON lm.conversation_id = c.id AND lm.seq = c.last_message_seq
+                LEFT JOIN oro_messaging_identity sender ON sender.id = lm.sender_id
+                WHERE m.user_id = ? AND m.left_at IS NULL AND c.product_id = ?
+                """;
+        List<Object> args = new ArrayList<>(List.of(actor.identityId(), actor.product().code()));
+        if (actor.organizationId() == null) {
+            sql += " AND c.organization_id IS NULL";
+        } else {
+            sql += " AND c.organization_id = ?";
+            args.add(actor.organizationId());
         }
-        return typed.getResultList();
+        return jdbc.query(sql + " ORDER BY coalesce(c.last_message_at, c.created_at) DESC, c.id",
+                (rs, row) -> summary(rs), args.toArray());
+    }
+
+    /** the actor mutes the conversation until then (null: unmuted) */
+    @Transactional
+    public ConversationMember mute(Actor actor, UUID conversationId, OffsetDateTime until) {
+        session.enterUser(actor);
+        Conversation conversation = access.requireConversation(actor, conversationId);
+        ConversationMember mine = access.requireActiveMember(actor, conversation);
+        mine.setMutedUntil(until);
+        em.flush();
+        return mine;
+    }
+
+    /** the owner or an admin renames a group (not a team chat: its name is the team's) */
+    @Transactional
+    public Conversation rename(Actor actor, UUID conversationId, String name, String description) {
+        session.enterUser(actor);
+        Conversation group = requireGroup(actor, conversationId);
+        ConversationMember mine = access.requireActiveMember(actor, group);
+        if (!mine.canManageMembers()) {
+            throw new Forbidden("Only the owner and the admins rename a group");
+        }
+        String newName = name.strip();
+        boolean renamed = !newName.equals(group.getName());
+        group.setName(newName);
+        group.setDescription(description == null || description.isBlank() ? null : description.strip());
+        em.flush();
+        outbox.add(actor.product(), "conversation.updated", "conversation", group.getId(),
+                Map.of("conversationId", group.getId(), "updatedBy", actor.identityId()));
+        if (renamed) {
+            systemMessages.renamed(group.getId(), actor.product(), newName, actor.identityId());
+        }
+        return group;
+    }
+
+    /** the actor is typing: its other devices and the other members see it at once (nothing is stored) */
+    @Transactional(readOnly = true)
+    public void typing(Actor actor, UUID conversationId, String userId) {
+        session.enterUser(actor);
+        Conversation conversation = access.requireConversation(actor, conversationId);
+        access.requireActiveMember(actor, conversation);
+        List<UUID> others = members.findActiveMembers(conversation.getId()).stream().map(ConversationMember::getUserId)
+                .filter(id -> !id.equals(actor.identityId())).toList();
+        live.afterCommit(others, actor, Map.of("type", "typing", "conversationId", conversation.getId(), "userId", userId));
+    }
+
+    private static ConversationSummary summary(ResultSet rs) throws SQLException {
+        UUID lastId = rs.getObject("lm_id", UUID.class);
+        ConversationSummary.LastMessage last = lastId == null ? null : new ConversationSummary.LastMessage(lastId,
+                rs.getLong("lm_seq"), rs.getString("lm_sender"), MessageType.of(rs.getString("lm_type")),
+                rs.getString("lm_body"), rs.getString("lm_metadata"), rs.getBoolean("lm_deleted"),
+                rs.getObject("lm_created_at", OffsetDateTime.class));
+        return new ConversationSummary(rs.getObject("id", UUID.class), ConversationType.of(rs.getString("conversation_type")),
+                rs.getString("name"), rs.getObject("team_id", UUID.class), rs.getString("other_user_id"),
+                rs.getLong("member_count"), rs.getLong("last_message_seq"),
+                rs.getObject("last_message_at", OffsetDateTime.class), rs.getObject("created_at", OffsetDateTime.class),
+                rs.getLong("unread"), rs.getObject("muted_until", OffsetDateTime.class), MemberRole.of(rs.getString("role")),
+                last);
     }
 
     /** the actor has read up to seq (clamped by the database: never back, never beyond the last message) */
@@ -224,23 +307,36 @@ public class ConversationService {
         return movePositions(actor, conversationId, seq, false);
     }
 
+    /** read: the members see it at once ("Seen"), the devices of the actor too (its unread count) */
     private ConversationMember movePositions(Actor actor, UUID conversationId, long seq, boolean read) {
         session.enterUser(actor);
         Conversation conversation = access.requireConversation(actor, conversationId);
         ConversationMember mine = access.requireActiveMember(actor, conversation);
+        long before = mine.getLastReadSeq();
         if (read) {
             mine.setLastReadSeq(seq);
         }
         mine.setLastDeliveredSeq(Math.max(seq, mine.getLastDeliveredSeq()));
         em.flush();
         em.refresh(mine);
+        if (mine.getLastReadSeq() > before) {
+            String userId = jdbc.queryForObject("SELECT external_user_id FROM oro_messaging_identity WHERE id = ?",
+                    String.class, actor.identityId());
+            live.afterCommit(members.findActiveMembers(conversation.getId()).stream().map(ConversationMember::getUserId).toList(),
+                    actor, Map.of("type", "read", "conversationId", conversation.getId(), "userId", userId,
+                            "seq", mine.getLastReadSeq()));
+        }
         return mine;
     }
 
+    /** a group the users manage: not a team chat, whose name and members are the team's (kept by Umoja) */
     private Conversation requireGroup(Actor actor, UUID conversationId) {
         Conversation conversation = access.requireConversation(actor, conversationId);
         if (conversation.getType() != ConversationType.GROUP) {
             throw new Conflict("Not a group");
+        }
+        if (conversation.isTeamChat()) {
+            throw new Conflict("The members and the name of a team chat are the team's");
         }
         return conversation;
     }

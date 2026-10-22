@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @Tag(name = "Messages", description = "The messages of a conversation the caller is an active member of")
@@ -31,6 +32,25 @@ public interface MessageApi {
     @PostMapping("/conversations/{conversationId}/messages")
     ResponseEntity<MessageDTO> send(@Parameter(hidden = true) Actor actor, @PathVariable UUID conversationId,
                                     @Valid @RequestBody SendMessageRequest request);
+
+    @Operation(summary = "A message", description = "One the caller may read: after a change on its stream")
+    @GetMapping("/messages/{messageId}")
+    MessageDTO get(@Parameter(hidden = true) Actor actor, @PathVariable UUID messageId);
+
+    @Operation(summary = "React to a message", description = "With one of the reactions of Oro; once per emoji")
+    @PutMapping("/messages/{messageId}/reactions/{emoji}")
+    MessageDTO react(@Parameter(hidden = true) Actor actor, @PathVariable UUID messageId, @PathVariable String emoji);
+
+    @Operation(summary = "Take back a reaction")
+    @DeleteMapping("/messages/{messageId}/reactions/{emoji}")
+    MessageDTO unreact(@Parameter(hidden = true) Actor actor, @PathVariable UUID messageId, @PathVariable String emoji);
+
+    @Operation(summary = "Search the messages",
+            description = "The ones the caller may read containing the text (2 to 200 characters), newest first, 30 at most; "
+                    + "in one conversation with conversationId")
+    @GetMapping("/search/messages")
+    List<MessageDTO> search(@Parameter(hidden = true) Actor actor, @RequestParam String q,
+                            @RequestParam(required = false) UUID conversationId);
 
     @Operation(summary = "Edit a message", description = "Its sender only, a text message not deleted")
     @PutMapping("/messages/{messageId}")

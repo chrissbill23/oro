@@ -52,6 +52,21 @@ public interface ConversationApi {
     ReadStateDTO markRead(@Parameter(hidden = true) Actor actor, @PathVariable UUID conversationId,
                           @Valid @RequestBody PositionRequest request);
 
+    @Operation(summary = "Rename a group", description = "Its owner or an admin; not a team chat (its name is the team's)")
+    @PutMapping("/{conversationId}")
+    ConversationDTO rename(@Parameter(hidden = true) Actor actor, @PathVariable UUID conversationId,
+                           @Valid @RequestBody RenameRequest request);
+
+    @Operation(summary = "Mute or unmute", description = "For the caller: until a time, or null to unmute")
+    @PutMapping("/{conversationId}/mute")
+    ConversationDTO mute(@Parameter(hidden = true) Actor actor, @PathVariable UUID conversationId,
+                         @RequestBody MuteRequest request);
+
+    @Operation(summary = "Typing", description = "The other members see it at once on their streams; nothing is stored")
+    @PostMapping("/{conversationId}/typing")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void typing(@Parameter(hidden = true) Actor actor, @PathVariable UUID conversationId);
+
     @Operation(summary = "Mark as delivered", description = "Up to seq: the messages reached a device of the caller")
     @PutMapping("/{conversationId}/delivered")
     ReadStateDTO markDelivered(@Parameter(hidden = true) Actor actor, @PathVariable UUID conversationId,

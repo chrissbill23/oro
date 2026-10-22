@@ -7,3 +7,6 @@ logs/
 src/main/resources/application-local.yml
 .env
 .env.local
+
+# the attachments of the local storage (oro.attachments.local-dir)
+data/

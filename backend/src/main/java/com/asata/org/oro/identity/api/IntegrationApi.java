@@ -2,9 +2,12 @@ package com.asata.org.oro.identity.api;
 
 import com.asata.org.oro.enums.Product;
 import com.asata.org.oro.identity.dto.IdentityDTO;
+import com.asata.org.oro.identity.dto.OrganizationSyncDTO;
+import com.asata.org.oro.identity.dto.OrganizationSyncRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -37,6 +40,13 @@ public interface IntegrationApi {
     @PostMapping("/identities/{userId}/deactivate")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void deactivate(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId);
+
+    @Operation(summary = "Synchronize an organization (Umoja)",
+            description = "Its members (the others lose their access and leave its conversations) and the chats of its teams "
+                    + "(their names and members); idempotent, sent on every change and periodically")
+    @PutMapping("/organizations/{organizationId}")
+    OrganizationSyncDTO syncOrganization(@Parameter(hidden = true) @AuthenticationPrincipal Product product,
+                                         @PathVariable UUID organizationId, @Valid @RequestBody OrganizationSyncRequest request);
 
     @Operation(summary = "Grant an organization access (Umoja)",
             description = "Idempotent; the user may then take part in the conversations of the organization")

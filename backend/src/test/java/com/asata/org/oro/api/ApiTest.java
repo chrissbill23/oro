@@ -220,7 +220,12 @@ class ApiTest extends PostgresIntegrationTest {
                 .andExpect(status().isForbidden());
         call(post("/conversations/" + group + "/members"), amani, null, "{\"userId\":\"oro-chausiku\",\"shareHistory\":false}")
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.sharedHistory").value(false));
-        call(get("/conversations/" + group + "/messages"), chausiku, null, null).andExpect(jsonPath("$.messages", hasSize(0)));
+        // not the history: only what came since, the system message of its arrival
+        call(get("/conversations/" + group + "/messages"), chausiku, null, null)
+                .andExpect(jsonPath("$.messages[*].type", contains("SYSTEM")))
+                .andExpect(jsonPath("$.messages[0].metadata.event").value("member.joined"))
+                .andExpect(jsonPath("$.messages[0].metadata.userId").value("oro-chausiku"))
+                .andExpect(jsonPath("$.messages[0].metadata.byUserId").value("oro-amani"));
         call(post("/conversations/" + group + "/members"), amani, null, "{\"userId\":\"oro-chausiku\",\"shareHistory\":false}")
                 .andExpect(status().isConflict());
 

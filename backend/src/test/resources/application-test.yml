@@ -12,6 +12,10 @@ oro:
       UMOJA:
         jwt-secret: test-umoja-jwt-secret-for-the-tests-only-0123456789
         integration-key: test-umoja-integration-key-for-the-tests-0123456789
+  attachments:
+    storage-provider: local
+    local-dir: target/test-attachments
+    scan: none
   outbox:
     # the tests run the worker by hand
     enabled: false

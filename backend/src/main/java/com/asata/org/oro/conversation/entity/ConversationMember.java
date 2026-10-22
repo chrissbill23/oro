@@ -58,6 +58,10 @@ public class ConversationMember {
     @Column(name = "last_read_seq", insertable = false)
     private long lastReadSeq;
 
+    /** when lastReadSeq last moved on (trigger) */
+    @Column(name = "last_read_at", insertable = false, updatable = false)
+    private OffsetDateTime lastReadAt;
+
     @Column(name = "muted_until")
     private OffsetDateTime mutedUntil;
 

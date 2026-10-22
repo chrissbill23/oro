@@ -25,13 +25,22 @@ services:
       ORO_INTEGRATION_KEY: ${ORO_INTEGRATION_KEY:-}
       UMOJA_INTEGRATION_KEY: ${UMOJA_INTEGRATION_KEY:-}
       ORO_CORS_ALLOWED_ORIGINS: ${ORO_CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://localhost:4201}
+    volumes:
+      # the files of the attachments (local storage), kept across rebuilds
+      - attachments:/data/attachments
     networks:
-      - default
-      - asata
+      default:
+      asata:
+        # how Umoja (its backend, the nginx of its frontend) finds Oro on the shared network
+        aliases:
+          - oro
     # until the shared database accepts connections
     restart: on-failure
     ports:
       - "${ORO_PORT:-8082}:8082"
+
+volumes:
+  attachments:
 
 networks:
   # created by ../../1_ASATA_DATABASE/docker-compose.yml

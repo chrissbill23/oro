@@ -25,6 +25,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
+import jakarta.servlet.DispatcherType;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
@@ -60,6 +61,8 @@ public class SecurityConfig {
         stateless(http, exceptionResolver)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource(properties)))
                 .authorizeHttpRequests(auth -> auth
+                        // the end of a stream (SseEmitter) is an async dispatch of a request authenticated at its start
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/ping", "/error", "/actuator/health/**", "/doc/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(resourceServer -> resourceServer

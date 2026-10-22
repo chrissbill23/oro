@@ -4,6 +4,10 @@ import com.asata.org.oro.enums.MemberRole;
 
 import java.time.OffsetDateTime;
 
-/** sharedHistory: the member reads the messages sent before it joined */
-public record MemberDTO(String userId, MemberRole role, boolean sharedHistory, OffsetDateTime joinedAt) {
+/**
+ * sharedHistory: the member reads the messages sent before it joined. lastReadSeq, lastReadAt: how far it has read,
+ * and when it last read on (the "Seen" of the messages)
+ */
+public record MemberDTO(String userId, MemberRole role, boolean sharedHistory, OffsetDateTime joinedAt,
+                        long lastReadSeq, OffsetDateTime lastReadAt) {
 }

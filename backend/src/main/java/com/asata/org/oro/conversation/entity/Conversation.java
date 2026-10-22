@@ -60,6 +60,13 @@ public class Conversation {
     @Column(name = "avatar_storage_key", length = 512)
     private String avatarStorageKey;
 
+    /**
+     * the chat of a team of Umoja (umoja_organization_team.id, an external reference): only the Umoja integration makes
+     * one (oro_app may not insert this column), its name and members follow the team
+     */
+    @Column(name = "team_id", insertable = false, updatable = false)
+    private UUID teamId;
+
     @Column(name = "created_by", nullable = false, updatable = false)
     private UUID createdBy;
 
@@ -75,4 +82,8 @@ public class Conversation {
 
     @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime updatedAt;
+
+    public boolean isTeamChat() {
+        return teamId != null;
+    }
 }

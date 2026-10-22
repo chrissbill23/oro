@@ -45,7 +45,7 @@ public class ConversationController implements ConversationApi {
     public MemberDTO addMember(Actor actor, UUID conversationId, AddMemberRequest request) {
         UUID identityId = identities.resolve(actor.product(), request.userId());
         ConversationMember member = conversations.addMember(actor, conversationId, identityId, request.shareHistory());
-        return new MemberDTO(request.userId(), member.getRole(), member.isSharedHistory(), member.getJoinedAt());
+        return memberDto(request.userId(), member);
     }
 
     @Override
@@ -65,6 +65,23 @@ public class ConversationController implements ConversationApi {
     }
 
     @Override
+    public ConversationDTO rename(Actor actor, UUID conversationId, RenameRequest request) {
+        return toDto(actor, conversations.rename(actor, conversationId, request.name(), request.description()));
+    }
+
+    @Override
+    public ConversationDTO mute(Actor actor, UUID conversationId, MuteRequest request) {
+        conversations.mute(actor, conversationId, request.until());
+        return toDto(actor, conversations.get(actor, conversationId));
+    }
+
+    @Override
+    public void typing(Actor actor, UUID conversationId) {
+        conversations.typing(actor, conversationId, identities.externalIds(actor.product(), List.of(actor.identityId()))
+                .get(actor.identityId()));
+    }
+
+    @Override
     public ReadStateDTO markDelivered(Actor actor, UUID conversationId, PositionRequest request) {
         ConversationMember member = conversations.markDelivered(actor, conversationId, request.seq());
         return new ReadStateDTO(member.getLastReadSeq(), member.getLastDeliveredSeq());
@@ -76,12 +93,17 @@ public class ConversationController implements ConversationApi {
         ids.add(conversation.getCreatedBy());
         members.forEach(member -> ids.add(member.getUserId()));
         Map<UUID, String> userIds = identities.externalIds(actor.product(), ids);
+        ConversationMember mine = members.stream().filter(member -> member.getUserId().equals(actor.identityId()))
+                .findFirst().orElseThrow();
         return new ConversationDTO(conversation.getId(), conversation.getType(), conversation.getContextType(),
                 conversation.getOrganizationId(), conversation.getName(), conversation.getDescription(),
-                userIds.get(conversation.getCreatedBy()), conversation.getLastMessageSeq(), conversation.getLastMessageAt(),
-                conversation.getCreatedAt(), members.stream()
-                .map(member -> new MemberDTO(userIds.get(member.getUserId()), member.getRole(), member.isSharedHistory(),
-                        member.getJoinedAt()))
-                .toList());
+                conversation.getTeamId(), userIds.get(conversation.getCreatedBy()), conversation.getLastMessageSeq(),
+                conversation.getLastMessageAt(), conversation.getCreatedAt(), mine.getRole(), mine.getMutedUntil(),
+                members.stream().map(member -> memberDto(userIds.get(member.getUserId()), member)).toList());
+    }
+
+    private static MemberDTO memberDto(String userId, ConversationMember member) {
+        return new MemberDTO(userId, member.getRole(), member.isSharedHistory(), member.getJoinedAt(),
+                member.getLastReadSeq(), member.getLastReadAt());
     }
 }

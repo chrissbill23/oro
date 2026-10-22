@@ -12,6 +12,15 @@ info:
 spring:
   application:
     name: Oro - Messaging
+  servlet:
+    multipart:
+      # oro.attachments.max-size-bytes, and a little for the form
+      max-file-size: 100MB
+      max-request-size: 101MB
+  mvc:
+    async:
+      # the streams (Server-Sent Events) end by themselves (LiveHub.STREAM_TIMEOUT)
+      request-timeout: -1
   jpa:
     open-in-view: false
     hibernate:
@@ -76,4 +85,13 @@ oro:
   attachments:
     # 100 MiB; the database refuses more than 2 GiB anyway
     max-size-bytes: 104857600
-    storage-provider: s3
+    # local: the files on a disk (local-dir), for development and single-server installs; an object storage (s3...)
+    # needs its FileStorage, until then nothing can be uploaded
+    storage-provider: ${ORO_STORAGE_PROVIDER:local}
+    local-dir: ${ORO_ATTACHMENTS_DIR:./data/attachments}
+    # none: no malware scanner, a file is recorded clean unscanned (development only); anything else: the files stay
+    # pending (not downloadable) until a scanner records its result
+    scan: ${ORO_ATTACHMENTS_SCAN:none}
+  live:
+    # a comment on every stream, so that the proxies keep them open
+    heartbeat: PT25S

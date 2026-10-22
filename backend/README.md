@@ -60,6 +60,9 @@ which git ignores:
 | `ORO_PORT` | `8082` | Port on the host (8080 Mokili, 8081 Umoja) |
 | `ORO_DB_USERNAME`, `ORO_DB_PASSWORD` | `oro_service`, `oro_service_dev` | Login role (`NOINHERIT`, never a superuser) and its password |
 | `ORO_OUTBOX_ENABLED` | `true` | Runs the outbox worker |
+| `ORO_STORAGE_PROVIDER` | `local` | Where the files of the attachments go: `local` (a disk, `ORO_ATTACHMENTS_DIR`); another provider needs its `FileStorage`, until then nothing can be uploaded |
+| `ORO_ATTACHMENTS_DIR` | `./data/attachments` (`/data/attachments` in Docker, a volume) | The directory of the local storage |
+| `ORO_ATTACHMENTS_SCAN` | `none` | `none`: no malware scanner, a file is recorded clean unscanned (**development only**); anything else: the files stay pending, not downloadable, until a scanner records its result |
 | `ORO_CORS_ALLOWED_ORIGINS` | `http://localhost:4200,http://localhost:4201` | Browser origins allowed to call the API |
 
 ### Backend locally
@@ -91,6 +94,9 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction |
 | `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention |
 | `ApiTest` | The HTTP chain with tokens really signed by each product: wrong secret, unknown issuer, expiry; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
+| `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; the list (last message, the other one, unread); mute; rename; reactions (allowed emojis, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
+| `MessagingApiTest` | The same over HTTP: the synchronization by the Umoja integration only; list, reactions, search, mute, read positions, typing; a file uploaded (its name cleaned, its size limited), sent, then downloaded by the members only with safe headers |
+| `LiveHubTest` | The streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only |
 | `AttachmentTest` | Metadata is visible only to those who can read the message, even with the storage key; downloads need an uploaded and clean file; the API cannot mark a file clean; a sender can attach only their own uploads; a deleted message's files are hidden and marked for purge; file names cannot be paths |
 
 ## API
@@ -132,9 +138,20 @@ carries an `x-request-id` header.
 | `GET /conversations/{id}/messages?before=&size=` | Newest first, then `before=nextBeforeSeq`; `?after=seq` catches up, oldest first |
 | `POST /conversations/{id}/messages` `{clientMessageId, type, body, metadata, attachmentIds}` | 201 stored; 200 when a retry with the same `clientMessageId` returns the stored message |
 | `PUT /messages/{id}` `{body}`, `DELETE /messages/{id}` | The sender edits, or deletes (the content is erased) |
+| `GET /messages/{id}` | A message the caller may read (after a change on its stream) |
+| `PUT`, `DELETE /messages/{id}/reactions/{emoji}` | Gives or takes back a reaction: 👍 ❤️ 😂 🎉 🙌 👀 😮 🙏 ✅ 🔥 |
+| `GET /search/messages?q=&conversationId=` | The messages the caller may read containing the text, newest first (30 at most) |
+| `PUT /conversations/{id}` `{name, description}` | Owner or admin renames a group (not a team chat) |
+| `PUT /conversations/{id}/mute` `{until}` | Mutes for the caller, `null` unmutes |
+| `POST /conversations/{id}/typing` | The other members see it on their streams; nothing is stored |
+| `POST /conversations/{id}/attachments` (multipart `file`) | Uploads a file, then send a message with its id |
+| `GET /attachments/{id}/content` | Downloads a file of a message the caller may read |
+| `GET /stream` | The stream of the caller (Server-Sent Events), see [Live](#live-the-stream-of-each-user) |
+| `GET /presence` | Who is online in the caller's context |
 | `PUT /internal/identities/{userId}` | Integration: provisions an identity |
 | `POST /internal/identities/{userId}/suspend`, `/reactivate`, `/deactivate` | Integration: changes an identity's status |
 | `PUT`, `DELETE /internal/organizations/{organizationId}/members/{userId}` | Umoja integration: grants or revokes an organization access |
+| `PUT /internal/organizations/{organizationId}` `{memberUserIds, teams: [{teamId, name, memberUserIds}]}` | Umoja integration: the organization as it is now (see [Team chats](#team-chats-and-the-umoja-synchronization)) |
 
 ```bash
 # Umoja: Jordan's conversations in Acme (a token from the Umoja backend's login)
@@ -142,6 +159,40 @@ curl -H "Authorization: Bearer $TOKEN" -H "x-organization-id: <organization id>"
 # Umoja's integration: Amara joins Acme's conversations
 curl -X PUT -H "x-integration-key: $UMOJA_INTEGRATION_KEY" http://localhost:8082/oro/internal/organizations/<org>/members/<asata user id>
 ```
+
+## Team chats and the Umoja synchronization
+
+Umoja tells Oro, with the key of its integration, who is in each of its organizations:
+`PUT /internal/organizations/{id}` with all the members and all the teams (their members, the lead first). In one
+transaction (`OrganizationSyncService`):
+
+- each member gets an organization access (granted again if it was revoked); the others lose theirs, so they leave the
+  conversations of the organization (trigger);
+- each team has one group, its **team chat** (`team_id`, unique per organization), named after it, whose members are the
+  team's and read its whole history. A member who joins or leaves it is told by a system message (not the founders);
+- the chat of a team that is gone keeps its history and loses its members.
+
+Only `oro_system` may write `team_id` (oro_app has a column-level INSERT grant without it), and the API refuses to add,
+remove, rename or leave a team chat: the team decides. The synchronization is idempotent: Umoja sends it after every
+change of its memberships and teams, when a user opens the messages, and every 10 minutes.
+
+## Live: the stream of each user
+
+`GET /stream` keeps a Server-Sent Events stream open (30 minutes, then the client opens another; a comment every 25 s
+keeps the proxies from closing it). The browser reads it with `fetch`, so that it carries the token. Its events are
+ids and numbers only; the client reads what changed through the API:
+
+| Event | When |
+|---|---|
+| `hello {online}` | At the start: who is online in the caller's context |
+| `presence {userId, online}` | Someone of the context opened their first stream, or closed their last one |
+| `message {change: created, edited, deleted, reaction; conversationId, messageId, seq}` | From the outbox (about 1 s) |
+| `conversation {change; conversationId}` | Created, renamed, a member added or gone (the one who left hears it too) |
+| `typing {conversationId, userId}` | At once, for the other members; lasts a few seconds |
+| `read {conversationId, userId, seq}` | At once, for the members ("Seen") |
+
+The streams and the presence live in the memory of the instance (`LiveHub`): several instances need a shared bus
+(PostgreSQL `LISTEN/NOTIFY`, Redis) for the events and the presence.
 
 ## Schema
 
@@ -154,6 +205,7 @@ erDiagram
   oro_conversation ||--o{ oro_message : contains
   oro_messaging_identity ||--o{ oro_message : sends
   oro_message ||--o{ oro_attachment : has
+  oro_message ||--o{ oro_message_reaction : has
   oro_conversation ||--o{ oro_attachment : holds
 
   oro_messaging_identity {
@@ -176,6 +228,7 @@ erDiagram
     uuid direct_identity_low "direct: sorted pair, unique per context"
     uuid direct_identity_high
     uuid created_by "FK (created_by, product_id)"
+    uuid team_id "the team of a team chat (Umoja), written by oro_system only"
     bigint last_message_seq "next seq = +1, under the row lock"
   }
   oro_conversation_member {
@@ -198,6 +251,11 @@ erDiagram
     text body "NULL once deleted"
     jsonb metadata
     timestamptz deleted_at
+  }
+  oro_message_reaction {
+    uuid message_id PK
+    uuid user_id PK
+    varchar emoji PK
   }
   oro_attachment {
     uuid id PK
@@ -351,6 +409,14 @@ Files live in an object storage; PostgreSQL holds only their metadata. The flow:
 `oro_app` may change only `message_id`, so the API can never mark a file clean, and the storage key gives access to
 nothing.
 
+**The local storage** (`ORO_STORAGE_PROVIDER=local`, `LocalFileStorage`) takes the upload through the API instead of a
+signed URL: `POST /conversations/{id}/attachments` registers the file, writes it under its key (to a temporary name,
+moved once complete), records its real size and SHA-256, then the scan. `GET /attachments/{id}/content` streams it to
+the members who may read its message: images (PNG, JPEG, GIF, WebP) inline, everything else (SVG and HTML included) as a
+download, with `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`. The file name is cleaned
+(no path, no control character). Without a scanner (`ORO_ATTACHMENTS_SCAN=none`), a file is recorded clean unscanned:
+for development only.
+
 ### Outbox
 
 `oro_outbox_event` rows are written in the same transaction as their change: an event exists if and only if the change
@@ -369,8 +435,9 @@ read the content through an authorized path and must be idempotent on the event 
 - **Retention**: processed events are deleted after 7 days (`purgeProcessed`, every hour).
 - **Configuration**: `oro.outbox.*`.
 
-`OutboxPoller` runs the worker every second on each instance. `LoggingOutboxEventHandler` stands in for the delivery
-gateway: replace it with an `OutboxEventHandler` bean.
+`OutboxPoller` runs the worker every second on each instance. `LiveOutboxEventHandler` publishes each event on the
+streams of the members of its conversation (see [Live](#live-the-stream-of-each-user)); push notifications would be
+another `OutboxEventHandler`.
 
 ### Row-level security and roles
 
@@ -441,22 +508,20 @@ Watch `pg_stat_user_tables` (dead tuples, vacuum times), the index sizes, and th
   `oro_system`.
 - **Purges**: processed outbox events (automatic); attachments with `deleted_at` (delete the object, then the row, as
   `oro_system`); uploads never attached after 24 h (same). The last two jobs are not written yet.
-- **Reconciliation**: the Umoja integration should compare `oro_organization_access` with Umoja's memberships
-  periodically and revoke what no longer exists.
+- **Reconciliation**: the Umoja integration sends each organization as it is (`PUT /internal/organizations/{id}`) after
+  every change and every 10 minutes; Oro revokes what is not listed.
 - **Backups**: they contain message content; encrypt them and keep them only as long as the retention policy allows.
 
 ## Limitations
 
-- **Basic REST API only.** There is no WebSocket or push delivery: clients poll, or catch up with `?after=`. Oro has no
-  account system of its own yet to issue its users' tokens. Integration keys are static, with no rotation; mTLS or
-  signed requests would be stronger. The attachment endpoints (upload URL, download URL) are not exposed.
-- **Umoja doesn't call `/internal` yet.** Its organization memberships must be pushed there for Umoja users to message;
-  until then, grant them by hand with the integration key.
-- **No real delivery or storage.** No delivery gateway or push notifications (`LoggingOutboxEventHandler`), no object
-  storage client (no signed URLs), no malware scanner; only their database side exists.
-- **Feeds and jobs not written.** The Umoja access feed and its reconciliation, and the purge jobs for attachments,
-  remain to be written.
+- **One instance for the live events.** The streams and the presence are in the memory of the instance (`LiveHub`);
+  several instances need a shared bus. No push notifications to phones. Oro has no account system of its own yet to
+  issue its users' tokens. Integration keys are static, with no rotation; mTLS or signed requests would be stronger.
+- **Local storage only, no scanner.** Files go to a disk (`LocalFileStorage`); an object storage client (signed upload
+  and download URLs) and a malware scanner remain to be written, until then `ORO_ATTACHMENTS_SCAN=none` records them
+  clean unscanned.
+- **Jobs not written.** The purge jobs for attachments (deleted ones, uploads never attached) remain to be written.
 - **Moderation and editing.** No moderation deletion by admins (only senders change their messages), no edit history,
-  no message reactions or threads.
+  no threads. Reactions are a fixed list of emojis.
 - **Send failure edge case.** A unique-key violation on a send (only reachable outside the locking path) surfaces as an
   error rather than as the stored message.

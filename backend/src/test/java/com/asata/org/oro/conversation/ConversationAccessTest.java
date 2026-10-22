@@ -115,12 +115,12 @@ class ConversationAccessTest extends PostgresIntegrationTest {
         assertThat(visibleMessages(barakaActor, family.getId())).isZero();
         say(amaniActor, family.getId(), "Three, while Baraka is away");
 
-        // added back, privacy first: only what comes next
+        // added back, privacy first: only what comes next (the system messages of the removal, 3, and of the return, 5)
         ConversationMember back = conversations.addMember(amaniActor, family.getId(), baraka, false);
-        assertThat(back.getHistoryFromSeq()).isEqualTo(3);
+        assertThat(back.getHistoryFromSeq()).isEqualTo(4);
         say(amaniActor, family.getId(), "Four");
-        assertThat(seqs(barakaActor, family.getId())).containsExactly(4L);
-        assertThat(visibleMessages(barakaActor, family.getId())).isEqualTo(1);
+        assertThat(seqs(barakaActor, family.getId())).containsExactly(6L, 5L);
+        assertThat(visibleMessages(barakaActor, family.getId())).isEqualTo(2);
         // two periods: the removed one stays ended
         assertThat(count("SELECT count(*) FROM oro_conversation_member WHERE user_id = ?", baraka)).isEqualTo(2);
     }
@@ -135,9 +135,10 @@ class ConversationAccessTest extends PostgresIntegrationTest {
         conversations.addMember(amaniActor, family.getId(), chausiku, false);
         say(amaniActor, family.getId(), "Three");
 
-        assertThat(seqs(barakaActor, family.getId())).containsExactly(3L, 2L, 1L);
-        assertThat(seqs(chausikuActor, family.getId())).containsExactly(3L);
-        assertThat(visibleMessages(chausikuActor, family.getId())).isEqualTo(1);
+        // 3 and 4: the system messages of their arrivals
+        assertThat(seqs(barakaActor, family.getId())).containsExactly(5L, 4L, 3L, 2L, 1L);
+        assertThat(seqs(chausikuActor, family.getId())).containsExactly(5L, 4L);
+        assertThat(visibleMessages(chausikuActor, family.getId())).isEqualTo(2);
         // the history of a membership never changes afterwards
         assertRefused(() -> admin.update("UPDATE oro_conversation_member SET shared_history = TRUE WHERE user_id = ?", chausiku),
                 "never change");

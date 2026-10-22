@@ -3,8 +3,11 @@ package com.asata.org.oro.identity.api;
 import com.asata.org.oro.enums.Product;
 import com.asata.org.oro.exception.NotFound;
 import com.asata.org.oro.identity.dto.IdentityDTO;
+import com.asata.org.oro.identity.dto.OrganizationSyncDTO;
+import com.asata.org.oro.identity.dto.OrganizationSyncRequest;
 import com.asata.org.oro.identity.service.IdentityService;
 import com.asata.org.oro.identity.service.OrganizationAccessService;
+import com.asata.org.oro.identity.service.OrganizationSyncService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,6 +19,7 @@ public class IntegrationController implements IntegrationApi {
 
     private final IdentityService identities;
     private final OrganizationAccessService organizationAccess;
+    private final OrganizationSyncService organizationSync;
 
     @Override
     public IdentityDTO provision(Product product, String userId) {
@@ -35,6 +39,16 @@ public class IntegrationController implements IntegrationApi {
     @Override
     public void deactivate(Product product, String userId) {
         identities.deactivate(existing(product, userId));
+    }
+
+    @Override
+    public OrganizationSyncDTO syncOrganization(Product product, UUID organizationId, OrganizationSyncRequest request) {
+        requireUmoja(product);
+        OrganizationSyncService.Result result = organizationSync.sync(organizationId, request.memberUserIds(),
+                request.teams().stream()
+                        .map(team -> new OrganizationSyncService.TeamChat(team.teamId(), team.name(), team.memberUserIds()))
+                        .toList());
+        return new OrganizationSyncDTO(result.granted(), result.revoked(), result.chatsCreated(), result.joined(), result.left());
     }
 
     @Override

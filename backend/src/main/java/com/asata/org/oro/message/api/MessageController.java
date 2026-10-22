@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.JsonNode;
 
 import java.util.*;
 
@@ -33,14 +34,36 @@ public class MessageController implements MessageApi {
 
     @Override
     public ResponseEntity<MessageDTO> send(Actor actor, UUID conversationId, SendMessageRequest request) {
-        if (request.metadata() != null && !request.metadata().isObject()) {
+        // "metadata": null reads as a null node: no metadata
+        JsonNode metadata = request.metadata() == null || request.metadata().isNull() ? null : request.metadata();
+        if (metadata != null && !metadata.isObject()) {
             throw new IllegalArgumentException("metadata is a JSON object");
         }
         SendResult result = messages.send(actor, conversationId, new SendMessage(request.clientMessageId(), request.type(),
-                request.body(), request.metadata() == null ? null : request.metadata().toString(),
+                request.body(), metadata == null ? null : metadata.toString(),
                 request.attachmentIds() == null ? List.of() : request.attachmentIds()));
         return ResponseEntity.status(result.duplicate() ? HttpStatus.OK : HttpStatus.CREATED)
                 .body(toDtos(actor, List.of(result.message())).getFirst());
+    }
+
+    @Override
+    public MessageDTO get(Actor actor, UUID messageId) {
+        return toDtos(actor, List.of(messages.get(actor, messageId))).getFirst();
+    }
+
+    @Override
+    public MessageDTO react(Actor actor, UUID messageId, String emoji) {
+        return toDtos(actor, List.of(messages.react(actor, messageId, emoji, true))).getFirst();
+    }
+
+    @Override
+    public MessageDTO unreact(Actor actor, UUID messageId, String emoji) {
+        return toDtos(actor, List.of(messages.react(actor, messageId, emoji, false))).getFirst();
+    }
+
+    @Override
+    public List<MessageDTO> search(Actor actor, String q, UUID conversationId) {
+        return toDtos(actor, messages.search(actor, q, conversationId));
     }
 
     @Override
@@ -61,9 +84,14 @@ public class MessageController implements MessageApi {
             }
         });
         Map<UUID, String> userIds = senders.isEmpty() ? Map.of() : identities.externalIds(actor.product(), senders);
+        MessageExtras extras = messages.extras(actor, page.stream().map(Message::getId).toList());
         return page.stream().map(message -> new MessageDTO(message.getId(), message.getConversationId(), message.getSeq(),
                 message.getSenderId() == null ? null : userIds.get(message.getSenderId()), message.getClientMessageId(),
                 message.getType(), message.getBody(), message.getMetadata(), message.getCreatedAt(), message.getEditedAt(),
-                message.isDeleted())).toList();
+                message.isDeleted(), extras.reactions().getOrDefault(message.getId(), List.of()),
+                extras.attachments().getOrDefault(message.getId(), List.of()).stream()
+                        .map(file -> new MessageDTO.AttachmentDTO(file.getId(), file.getFileName(), file.getMimeType(),
+                                file.getSizeBytes(), file.isDownloadable()))
+                        .toList())).toList();
     }
 }

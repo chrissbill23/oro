@@ -109,7 +109,7 @@ public abstract class PostgresIntegrationTest {
     void emptyTables() {
         tx = new TransactionTemplate(transactionManager);
         admin.execute("""
-                TRUNCATE oro_outbox_event, oro_attachment, oro_message, oro_conversation_member, oro_conversation,
+                TRUNCATE oro_outbox_event, oro_message_reaction, oro_attachment, oro_message, oro_conversation_member, oro_conversation,
                          oro_organization_access, oro_messaging_identity""");
         outboxHandler.reset();
     }

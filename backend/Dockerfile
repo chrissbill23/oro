@@ -23,6 +23,10 @@ COPY --from=build /workspace/extracted/spring-boot-loader/ ./
 COPY --from=build /workspace/extracted/snapshot-dependencies/ ./
 COPY --from=build /workspace/extracted/application/ ./
 
+# the attachments of the local storage (a volume in docker-compose.yml)
+RUN mkdir -p /data/attachments && chown ubuntu:ubuntu /data/attachments
+ENV ORO_ATTACHMENTS_DIR=/data/attachments
+
 USER ubuntu
 
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75"

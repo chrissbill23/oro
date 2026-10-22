@@ -11,6 +11,8 @@ import com.asata.org.oro.enums.MessageType;
 import com.asata.org.oro.exception.Conflict;
 import com.asata.org.oro.exception.Forbidden;
 import com.asata.org.oro.exception.NotFound;
+import com.asata.org.oro.message.dto.MessageDTO;
+import com.asata.org.oro.message.dto.MessageExtras;
 import com.asata.org.oro.message.dto.MessagePage;
 import com.asata.org.oro.message.dto.SendMessage;
 import com.asata.org.oro.message.dto.SendResult;
@@ -19,13 +21,14 @@ import com.asata.org.oro.message.repository.MessageRepository;
 import com.asata.org.oro.outbox.service.OutboxWriter;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /** the messages of a user (role oro_app, under RLS) */
 @Service
@@ -33,6 +36,9 @@ import java.util.UUID;
 public class MessageService {
 
     public static final int MAX_PAGE_SIZE = 100;
+    /** the emojis a member may react with */
+    public static final List<String> REACTIONS = List.of("👍", "❤️", "😂", "🎉", "🙌", "👀", "😮", "🙏", "✅", "🔥");
+    public static final int MAX_SEARCH_RESULTS = 30;
 
     private final DbSession session;
     private final EntityManager em;
@@ -40,6 +46,7 @@ public class MessageService {
     private final MessageRepository messages;
     private final AttachmentRepository attachments;
     private final OutboxWriter outbox;
+    private final JdbcTemplate jdbc;
 
     /**
      * Sends a message, in one transaction (all or nothing): the conversation row is locked (the sends of a
@@ -122,6 +129,108 @@ public class MessageService {
         Conversation conversation = access.requireConversation(actor, conversationId);
         access.requireActiveMember(actor, conversation);
         return messages.findAfter(conversation.getId(), afterSeq, Math.clamp(size, 1, MAX_PAGE_SIZE));
+    }
+
+    /** a message the actor may read */
+    @Transactional(readOnly = true)
+    public Message get(Actor actor, UUID messageId) {
+        session.enterUser(actor);
+        Message message = messages.findById(messageId).orElseThrow(() -> new NotFound("Message not found"));
+        access.requireActiveMember(actor, access.requireConversation(actor, message.getConversationId()));
+        return message;
+    }
+
+    /** the reactions and attachments of messages the actor may read (RLS shows only those) */
+    @Transactional(readOnly = true)
+    public MessageExtras extras(Actor actor, Collection<UUID> messageIds) {
+        if (messageIds.isEmpty()) {
+            return MessageExtras.NONE;
+        }
+        session.enterUser(actor);
+        record Row(UUID messageId, String emoji, String userId) {
+        }
+        List<Row> rows = new NamedParameterJdbcTemplate(jdbc).query("""
+                SELECT r.message_id, r.emoji, i.external_user_id FROM oro_message_reaction r
+                JOIN oro_messaging_identity i ON i.id = r.user_id
+                WHERE r.message_id IN (:ids) ORDER BY r.created_at, r.emoji""", Map.of("ids", messageIds),
+                (rs, n) -> new Row(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3)));
+        Map<UUID, List<MessageDTO.ReactionDTO>> reactions = new HashMap<>();
+        rows.stream().collect(Collectors.groupingBy(Row::messageId, LinkedHashMap::new, Collectors.toList()))
+                .forEach((messageId, ofMessage) -> reactions.put(messageId, ofMessage.stream()
+                        .collect(Collectors.groupingBy(Row::emoji, LinkedHashMap::new,
+                                Collectors.mapping(Row::userId, Collectors.toList())))
+                        .entrySet().stream().map(e -> new MessageDTO.ReactionDTO(e.getKey(), e.getValue())).toList()));
+        Map<UUID, List<Attachment>> files = attachments.findByMessageIdInOrderByCreatedAt(messageIds).stream()
+                .collect(Collectors.groupingBy(Attachment::getMessageId));
+        return new MessageExtras(reactions, files);
+    }
+
+    /**
+     * The actor gives (on) or takes back a reaction to a message it may read, among {@link #REACTIONS}; the members
+     * see it on their streams (outbox event reaction.changed)
+     */
+    @Transactional
+    public Message react(Actor actor, UUID messageId, String emoji, boolean on) {
+        if (!REACTIONS.contains(emoji)) {
+            throw new IllegalArgumentException("Not one of the reactions: " + String.join(" ", REACTIONS));
+        }
+        session.enterUser(actor);
+        Message message = messages.findById(messageId).orElseThrow(() -> new NotFound("Message not found"));
+        access.requireActiveMember(actor, access.requireConversation(actor, message.getConversationId()));
+        if (message.isDeleted() || message.getType() == MessageType.SYSTEM) {
+            throw new Conflict("This message takes no reaction");
+        }
+        int changed = on
+                ? jdbc.update("""
+                        INSERT INTO oro_message_reaction(message_id, conversation_id, product_id, user_id, emoji)
+                        VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING""",
+                message.getId(), message.getConversationId(), actor.product().code(), actor.identityId(), emoji)
+                : jdbc.update("DELETE FROM oro_message_reaction WHERE message_id = ? AND user_id = ? AND emoji = ?",
+                message.getId(), actor.identityId(), emoji);
+        if (changed > 0) {
+            outbox.add(actor.product(), "reaction.changed", "message", message.getId(),
+                    Map.of("conversationId", message.getConversationId(), "messageId", message.getId(), "seq", message.getSeq()));
+        }
+        return message;
+    }
+
+    /**
+     * The messages the actor may read that contain the text (not the system ones, not the deleted ones), in its
+     * conversations of its context, or in one of them; the newest first
+     */
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
+    public List<Message> search(Actor actor, String text, UUID conversationId) {
+        String query = text == null ? "" : text.strip();
+        if (query.length() < 2 || query.length() > 200) {
+            throw new IllegalArgumentException("Search for 2 to 200 characters");
+        }
+        session.enterUser(actor);
+        if (conversationId != null) {
+            access.requireActiveMember(actor, access.requireConversation(actor, conversationId));
+        }
+        String sql = """
+                SELECT msg.* FROM oro_message msg
+                JOIN oro_conversation c ON c.id = msg.conversation_id
+                JOIN oro_conversation_member m ON m.conversation_id = c.id AND m.user_id = :me AND m.left_at IS NULL
+                WHERE c.product_id = :product AND msg.deleted_at IS NULL AND msg.message_type <> 'system'
+                  AND msg.body ILIKE :pattern ESCAPE '!'""";
+        sql += actor.organizationId() == null ? " AND c.organization_id IS NULL" : " AND c.organization_id = :organization";
+        if (conversationId != null) {
+            sql += " AND c.id = :conversation";
+        }
+        var found = em.createNativeQuery(sql + " ORDER BY msg.created_at DESC LIMIT " + MAX_SEARCH_RESULTS, Message.class)
+                .setParameter("me", actor.identityId())
+                .setParameter("product", actor.product().code())
+                // the text as it is: its wildcards escaped
+                .setParameter("pattern", "%" + query.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%");
+        if (actor.organizationId() != null) {
+            found.setParameter("organization", actor.organizationId());
+        }
+        if (conversationId != null) {
+            found.setParameter("conversation", conversationId);
+        }
+        return found.getResultList();
     }
 
     /** the sender changes the text of its message (edited_at by the database) */
