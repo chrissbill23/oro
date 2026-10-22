@@ -1,0 +1,10 @@
+# Oro: the messaging backend. The database is the shared one of Asata, with the Oro tables: start it first.
+#   docker compose -f ../1_ASATA_DATABASE/docker-compose.yml up -d
+#   docker compose up --build
+# API: http://localhost:8082/oro   Swagger UI: http://localhost:8082/oro/doc
+# Settings (the secrets of the products, the integration keys, the port) in backend/.env.local (git ignored).
+name: oro
+
+include:
+  - path: backend/docker-compose.yml
+    env_file: backend/.env.local

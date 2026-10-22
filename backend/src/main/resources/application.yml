@@ -1,3 +1,9 @@
+server:
+  # 8080 Mokili, 8081 Umoja
+  port: ${SERVER_PORT:8082}
+  forward-headers-strategy: framework
+  servlet:
+    context-path: /oro
 info:
   app:
     name: '@project.name@'
@@ -26,7 +32,37 @@ spring:
     hikari:
       connection-timeout: 5000
       validation-timeout: 3000
+springdoc:
+  api-docs:
+    path: /doc/api
+    version: openapi_3_0
+  swagger-ui:
+    operations-sorter: method
+    path: /doc
+    url: /doc/api
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      # the details (database...) to nobody: /actuator/health is public
+      show-details: never
 oro:
+  security:
+    cors-allowed-origins: ${ORO_CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:4201}
+    products:
+      # each product signs the access tokens of its users (HS256) with its own secret and issuer
+      ORO:
+        issuer: oro
+        jwt-secret: ${ORO_JWT_SECRET:}
+        integration-key: ${ORO_INTEGRATION_KEY:}
+      UMOJA:
+        # as Umoja issues them: umoja.security.jwt.issuer and UMOJA_JWT_SECRET of the Umoja backend
+        issuer: umoja
+        jwt-secret: ${UMOJA_JWT_SECRET:}
+        integration-key: ${UMOJA_INTEGRATION_KEY:}
   outbox:
     enabled: ${ORO_OUTBOX_ENABLED:true}
     poll-interval: PT1S

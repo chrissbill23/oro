@@ -4,6 +4,14 @@ spring:
     hikari:
       maximum-pool-size: 8
 oro:
+  security:
+    products:
+      ORO:
+        jwt-secret: test-oro-jwt-secret-for-the-tests-only-0123456789
+        integration-key: test-oro-integration-key-for-the-tests-0123456789
+      UMOJA:
+        jwt-secret: test-umoja-jwt-secret-for-the-tests-only-0123456789
+        integration-key: test-umoja-integration-key-for-the-tests-0123456789
   outbox:
     # the tests run the worker by hand
     enabled: false

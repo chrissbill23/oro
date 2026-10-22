@@ -175,6 +175,24 @@ public class ConversationService {
                 Map.of("conversationId", group.getId(), "memberId", identityId, "removedBy", actor.identityId()));
     }
 
+    /** a conversation the actor is an active member of */
+    @Transactional(readOnly = true)
+    public Conversation get(Actor actor, UUID conversationId) {
+        session.enterUser(actor);
+        Conversation conversation = access.requireConversation(actor, conversationId);
+        access.requireActiveMember(actor, conversation);
+        return conversation;
+    }
+
+    /** the active members of a conversation the actor is an active member of */
+    @Transactional(readOnly = true)
+    public List<ConversationMember> members(Actor actor, UUID conversationId) {
+        session.enterUser(actor);
+        Conversation conversation = access.requireConversation(actor, conversationId);
+        access.requireActiveMember(actor, conversation);
+        return members.findActiveMembers(conversation.getId());
+    }
+
     /** the active conversations of the actor in its context, the latest message first, with their unread counts */
     @Transactional(readOnly = true)
     public List<ConversationSummary> list(Actor actor) {

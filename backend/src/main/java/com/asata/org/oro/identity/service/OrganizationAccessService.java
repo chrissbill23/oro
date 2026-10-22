@@ -31,6 +31,16 @@ public class OrganizationAccessService {
                 WHERE oro_organization_access.revoked_at IS NOT NULL""", identityId, organizationId);
     }
 
+    /** the identity has a current access to the organization */
+    @Transactional(readOnly = true)
+    public boolean isGranted(UUID identityId, UUID organizationId) {
+        session.enterSystem();
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM oro_organization_access
+                               WHERE identity_id = ? AND organization_id = ? AND revoked_at IS NULL)""",
+                Boolean.class, identityId, organizationId));
+    }
+
     /** idempotent */
     @Transactional
     public void revoke(UUID identityId, UUID organizationId) {

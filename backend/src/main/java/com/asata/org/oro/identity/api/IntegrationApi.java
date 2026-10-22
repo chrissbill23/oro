@@ -1,0 +1,54 @@
+package com.asata.org.oro.identity.api;
+
+import com.asata.org.oro.enums.Product;
+import com.asata.org.oro.identity.dto.IdentityDTO;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
+
+/**
+ * For the trusted integration of a product, authenticated by its key (x-integration-key): it acts for its own product
+ * only. Never called by a user.
+ */
+@Tag(name = "Integration", description = "Trusted integrations of the products: identities and Umoja organization accesses")
+@RequestMapping("/internal")
+public interface IntegrationApi {
+
+    @Operation(summary = "Provision an identity", description = "Idempotent: the identity of an account of the product")
+    @PutMapping("/identities/{userId}")
+    IdentityDTO provision(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId);
+
+    @Operation(summary = "Suspend an identity", description = "It keeps its conversations but reads and sends nothing")
+    @PostMapping("/identities/{userId}/suspend")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void suspend(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId);
+
+    @Operation(summary = "Reactivate a suspended identity")
+    @PostMapping("/identities/{userId}/reactivate")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void reactivate(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId);
+
+    @Operation(summary = "Deactivate an identity", description = "Final: it leaves all its conversations")
+    @PostMapping("/identities/{userId}/deactivate")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deactivate(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId);
+
+    @Operation(summary = "Grant an organization access (Umoja)",
+            description = "Idempotent; the user may then take part in the conversations of the organization")
+    @PutMapping("/organizations/{organizationId}/members/{userId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void grantOrganizationAccess(@Parameter(hidden = true) @AuthenticationPrincipal Product product,
+                                 @PathVariable UUID organizationId, @PathVariable String userId);
+
+    @Operation(summary = "Revoke an organization access (Umoja)",
+            description = "Idempotent; the user leaves the conversations of the organization at once")
+    @DeleteMapping("/organizations/{organizationId}/members/{userId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void revokeOrganizationAccess(@Parameter(hidden = true) @AuthenticationPrincipal Product product,
+                                  @PathVariable UUID organizationId, @PathVariable String userId);
+}

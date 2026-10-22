@@ -14,6 +14,8 @@ repository, like the rest of Asata. There is no Flyway: `ddl-auto: none`.
 | Development data and login | [`../../1_ASATA_DATABASE/oro/INSERT.sql`](../../1_ASATA_DATABASE/oro/INSERT.sql) |
 | Drop | [`../../1_ASATA_DATABASE/oro/DROP.sql`](../../1_ASATA_DATABASE/oro/DROP.sql) |
 | Entities, repositories, services | `src/main/java/com/asata/org/oro/{identity,conversation,message,attachment,outbox}` |
+| REST API (interfaces `*Api`, controllers) | `src/main/java/com/asata/org/oro/{mainservice,identity,conversation,message}/api` |
+| Security, errors, actor resolution | `src/main/java/com/asata/org/oro/config/{security,web}` |
 | Database context (role, RLS settings) | `src/main/java/com/asata/org/oro/context/DbSession.java` |
 | Integration tests (Testcontainers) | `src/test/java/com/asata/org/oro` |
 
@@ -39,10 +41,31 @@ docker exec -i asata-postgres-1 sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USE
 `oro/INSERT.sql` creates the development login `oro_service`, whose password is the placeholder `oro_service_dev`. A
 deployment creates its own logins, with secrets from its vault, and never runs the seed.
 
-### Backend
+### Backend with Docker
 
 ```bash
-SPRING_DATASOURCE_PASSWORD=oro_service_dev ./mvnw spring-boot:run    # localhost:5433/asata as oro_service
+docker compose -f ../../1_ASATA_DATABASE/docker-compose.yml up -d    # the shared database, once
+cd .. && docker compose up --build                                   # reads backend/.env.local
+```
+
+API: http://localhost:8082/oro, Swagger UI: http://localhost:8082/oro/doc. The container joins the shared database on
+the Docker network `asataDB` (`asata-postgres:5432`) and logs in as `oro_service`. Settings go in `backend/.env.local`,
+which git ignores:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `UMOJA_JWT_SECRET` | none | Umoja's token secret: **the same as the Umoja backend's** (`umoja/backend/.env.local`). Unset: Umoja users cannot call Oro |
+| `ORO_JWT_SECRET` | none | The secret of Oro's own account system (to come). Unset: Oro users cannot call |
+| `UMOJA_INTEGRATION_KEY`, `ORO_INTEGRATION_KEY` | none | Keys of the trusted integrations (`/internal`); 32 characters at least (`openssl rand -hex 32`) |
+| `ORO_PORT` | `8082` | Port on the host (8080 Mokili, 8081 Umoja) |
+| `ORO_DB_USERNAME`, `ORO_DB_PASSWORD` | `oro_service`, `oro_service_dev` | Login role (`NOINHERIT`, never a superuser) and its password |
+| `ORO_OUTBOX_ENABLED` | `true` | Runs the outbox worker |
+| `ORO_CORS_ALLOWED_ORIGINS` | `http://localhost:4200,http://localhost:4201` | Browser origins allowed to call the API |
+
+### Backend locally
+
+```bash
+SPRING_DATASOURCE_PASSWORD=oro_service_dev UMOJA_JWT_SECRET=... ./mvnw spring-boot:run    # localhost:5433/asata, port 8082
 ```
 
 Never connect as a superuser: superusers bypass RLS. Local settings go in `src/main/resources/application-local.yml`,
@@ -67,7 +90,58 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction |
 | `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention |
+| `ApiTest` | The HTTP chain with tokens really signed by each product: wrong secret, unknown issuer, expiry; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
 | `AttachmentTest` | Metadata is visible only to those who can read the message, even with the storage key; downloads need an uploaded and clean file; the API cannot mark a file clean; a sender can attach only their own uploads; a deleted message's files are hidden and marked for purge; file names cannot be paths |
+
+## API
+
+All routes are under `/oro`. Errors are JSON (`status`, `message`, `requestId`; never a database detail). Every response
+carries an `x-request-id` header.
+
+### Who may call
+
+- **Users** send `Authorization: Bearer <access token of their product>`. Each product signs its own tokens (HS256) with
+  its own secret and issuer (`oro`, `umoja`). Oro reads the issuer and checks the signature with that product's
+  secret, so a token from one product is never accepted as the other's. An unknown issuer, a bad signature or an expired
+  token gets 401.
+  - The subject is the account's ID in its product (for Umoja, `asata_user.id`). Its messaging identity is created on
+    its first request: a valid product token proves the account exists.
+  - Suspended or deactivated identities get 403.
+- **Umoja requests** name their organization in `x-organization-id`. Umoja tokens carry no organization, so the header
+  only picks one of the user's current accesses (fed by Umoja); it never grants one. A missing header gets 400, an
+  organization without access gets 403. Oro requests must not send the header.
+- **Trusted integrations** call `/internal` with `x-integration-key`. A key acts for its own product only, and user
+  tokens are refused there.
+- Clients name other users by their **user ID in their product** (`userId`), never by Oro's internal IDs.
+- Anything outside the caller's reach answers 404, never 403, so an ID reveals nothing.
+
+### Routes
+
+| Route | What |
+|---|---|
+| `GET /ping`, `GET /actuator/health` | Status, public |
+| `GET /doc`, `GET /doc/api` | Swagger UI, OpenAPI |
+| `GET /me` | The caller: identity, product, user ID, organization |
+| `GET /conversations` | The caller's active conversations in its context, latest first, with unread counts |
+| `POST /conversations/direct` `{userId}` | The direct conversation with a user (created the first time; concurrent calls give one) |
+| `POST /conversations/groups` `{name, description, memberUserIds}` | A group, with the caller as owner |
+| `GET /conversations/{id}` | A conversation and its active members |
+| `POST /conversations/{id}/members` `{userId, shareHistory}` | Owner or admin adds a member, choosing whether it sees the history |
+| `DELETE /conversations/{id}/members/{userId}` | Removes a member (owner or admin), or leaves (the caller's own user ID) |
+| `PUT /conversations/{id}/read`, `/delivered` `{seq}` | The caller's positions (only move forward) |
+| `GET /conversations/{id}/messages?before=&size=` | Newest first, then `before=nextBeforeSeq`; `?after=seq` catches up, oldest first |
+| `POST /conversations/{id}/messages` `{clientMessageId, type, body, metadata, attachmentIds}` | 201 stored; 200 when a retry with the same `clientMessageId` returns the stored message |
+| `PUT /messages/{id}` `{body}`, `DELETE /messages/{id}` | The sender edits, or deletes (the content is erased) |
+| `PUT /internal/identities/{userId}` | Integration: provisions an identity |
+| `POST /internal/identities/{userId}/suspend`, `/reactivate`, `/deactivate` | Integration: changes an identity's status |
+| `PUT`, `DELETE /internal/organizations/{organizationId}/members/{userId}` | Umoja integration: grants or revokes an organization access |
+
+```bash
+# Umoja: Jordan's conversations in Acme (a token from the Umoja backend's login)
+curl -H "Authorization: Bearer $TOKEN" -H "x-organization-id: <organization id>" http://localhost:8082/oro/conversations
+# Umoja's integration: Amara joins Acme's conversations
+curl -X PUT -H "x-integration-key: $UMOJA_INTEGRATION_KEY" http://localhost:8082/oro/internal/organizations/<org>/members/<asata user id>
+```
 
 ## Schema
 
@@ -177,12 +251,14 @@ by another system. Instead:
 2. **Triggers** require a current access for the creator of an organization conversation and for each new member.
    Revoking (or deleting) an access ends that identity's memberships in the organization's conversations, in the same
    transaction.
-3. **On each request**, the API takes the organization from the verified Umoja token (never from the request body) and
-   builds `Actor.umoja(identity, organization)`. `ConversationAccess` refuses any conversation outside that
+3. **On each request**, the API reads the organization from the `x-organization-id` header (Umoja tokens carry none)
+   and accepts it only if the identity has a current access to it (403 otherwise). Then it builds
+   `Actor.umoja(identity, organization)` (`ActorResolver`). `ConversationAccess` refuses any conversation outside that
    organization with `NotFound`, the same answer as for one that doesn't exist.
 
-The access list is only as fresh as the feed. An access revoked in Umoja keeps working until the push arrives (or the
-next reconciliation runs). That is why the token check in step 3 matters.
+The access list is only as fresh as the feed. An access revoked in Umoja keeps working in Oro until the push arrives (or
+the next reconciliation runs), so the push should happen in the same operation that removes the membership in Umoja. A
+short-lived organization claim in the Umoja tokens would close that window.
 
 ### Direct conversations
 
@@ -371,8 +447,11 @@ Watch `pg_stat_user_tables` (dead tuples, vacuum times), the index sizes, and th
 
 ## Limitations
 
-- **Persistence and domain layer only.** No REST or WebSocket API, no JWT validation, no service-to-service
-  authentication for the integrations yet. `Actor` is what that layer must build from verified tokens.
+- **Basic REST API only.** There is no WebSocket or push delivery: clients poll, or catch up with `?after=`. Oro has no
+  account system of its own yet to issue its users' tokens. Integration keys are static, with no rotation; mTLS or
+  signed requests would be stronger. The attachment endpoints (upload URL, download URL) are not exposed.
+- **Umoja doesn't call `/internal` yet.** Its organization memberships must be pushed there for Umoja users to message;
+  until then, grant them by hand with the integration key.
 - **No real delivery or storage.** No delivery gateway or push notifications (`LoggingOutboxEventHandler`), no object
   storage client (no signed URLs), no malware scanner; only their database side exists.
 - **Feeds and jobs not written.** The Umoja access feed and its reconciliation, and the purge jobs for attachments,

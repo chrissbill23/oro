@@ -1,0 +1,40 @@
+# Oro backend (messaging). The database is the one shared by the services of Asata
+# (../../1_ASATA_DATABASE/docker-compose.yml), with the Oro tables and the login oro_service: start it first.
+#   docker compose -f ../../1_ASATA_DATABASE/docker-compose.yml up -d
+#   docker compose up --build
+#   docker compose --env-file .env.local up --build
+# Settings in .env.local (git ignored): the secrets of the products (UMOJA_JWT_SECRET: the one of the Umoja backend),
+# the integration keys, the port. API: http://localhost:8082/oro   Swagger UI: http://localhost:8082/oro/doc
+name: oro
+
+services:
+  oro:
+    build: .
+    environment:
+      # the shared database, on the network asataDB
+      SPRING_DATASOURCE_URL: jdbc:postgresql://asata-postgres:5432/asata
+      # never a superuser (it bypasses row-level security): the NOINHERIT login of oro/INSERT.sql, whose development
+      # password is the placeholder oro_service_dev; set ORO_DB_PASSWORD for any other database
+      SPRING_DATASOURCE_USERNAME: ${ORO_DB_USERNAME:-oro_service}
+      SPRING_DATASOURCE_PASSWORD: ${ORO_DB_PASSWORD:-oro_service_dev}
+      ORO_OUTBOX_ENABLED: ${ORO_OUTBOX_ENABLED:-true}
+      # the tokens of the users: each product's own secret (empty: that product's users cannot call Oro)
+      ORO_JWT_SECRET: ${ORO_JWT_SECRET:-}
+      UMOJA_JWT_SECRET: ${UMOJA_JWT_SECRET:-}
+      # the keys of the trusted integrations of the products (/internal)
+      ORO_INTEGRATION_KEY: ${ORO_INTEGRATION_KEY:-}
+      UMOJA_INTEGRATION_KEY: ${UMOJA_INTEGRATION_KEY:-}
+      ORO_CORS_ALLOWED_ORIGINS: ${ORO_CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://localhost:4201}
+    networks:
+      - default
+      - asata
+    # until the shared database accepts connections
+    restart: on-failure
+    ports:
+      - "${ORO_PORT:-8082}:8082"
+
+networks:
+  # created by ../../1_ASATA_DATABASE/docker-compose.yml
+  asata:
+    external: true
+    name: asataDB
