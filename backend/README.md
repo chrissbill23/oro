@@ -1,6 +1,6 @@
-# Oro backend: the messaging database
+# Oro backend
 
-The persistence layer of Oro Messaging, the messaging service shared by **Oro** (personal messaging: direct
+The backend of Oro Messaging, the messaging service shared by **Oro** (personal messaging: direct
 messages, friends, family groups, communities) and **Umoja** (business messaging inside an organization). The two
 products keep their own accounts and authentication. They share this infrastructure, and nothing in it lets one
 product reach the other's identities or conversations.
@@ -14,7 +14,9 @@ repository, like the rest of Asata. There is no Flyway: `ddl-auto: none`.
 | Development data and login | [`../../1_ASATA_DATABASE/oro/INSERT.sql`](../../1_ASATA_DATABASE/oro/INSERT.sql) |
 | Drop | [`../../1_ASATA_DATABASE/oro/DROP.sql`](../../1_ASATA_DATABASE/oro/DROP.sql) |
 | Entities, repositories, services | `src/main/java/com/asata/org/oro/{identity,conversation,message,attachment,outbox}` |
-| REST API (interfaces `*Api`, controllers) | `src/main/java/com/asata/org/oro/{mainservice,identity,conversation,message}/api` |
+| REST API (interfaces `*Api`, controllers) | `src/main/java/com/asata/org/oro/{mainservice,identity,conversation,message,attachment,live}/api` |
+| Live streams and presence | `src/main/java/com/asata/org/oro/live` |
+| File storage | `src/main/java/com/asata/org/oro/attachment/storage` |
 | Security, errors, actor resolution | `src/main/java/com/asata/org/oro/config/{security,web}` |
 | Database context (role, RLS settings) | `src/main/java/com/asata/org/oro/context/DbSession.java` |
 | Integration tests (Testcontainers) | `src/test/java/com/asata/org/oro` |
@@ -394,7 +396,8 @@ Even then, keep the positions for the counts.
 
 ### Attachments
 
-Files live in an object storage; PostgreSQL holds only their metadata. The flow:
+Files live outside the database; PostgreSQL holds only their metadata. The flow with an object storage (not written
+yet, see the local storage below for what runs today):
 
 1. **Register**: the API creates the row and returns a signed upload URL. The storage key is random and never built
    from the file name.
