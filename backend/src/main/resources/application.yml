@@ -90,6 +90,22 @@ oro:
         issuer: umoja
         jwk-set-uri: ${UMOJA_JWKS_URI:http://localhost:8081/umoja/.well-known/jwks.json}
         integration-keys: ${UMOJA_INTEGRATION_KEYS:}
+  # how many requests a user makes (its token: issuer and subject), in this instance: per-minute a minute after a burst;
+  # any for every request, the others on top. Over: 429 and Retry-After
+  rate-limits:
+    enabled: ${ORO_RATE_LIMITS:true}
+    limits:
+      any: { per-minute: 300, burst: 100 }
+      send: { per-minute: 60, burst: 20 }
+      change-message: { per-minute: 30, burst: 10 }
+      react: { per-minute: 60, burst: 20 }
+      typing: { per-minute: 30, burst: 5 }
+      search: { per-minute: 20, burst: 5 }
+      open-direct: { per-minute: 20, burst: 10 }
+      create-group: { per-minute: 3, burst: 5 }
+      add-member: { per-minute: 30, burst: 20 }
+      upload: { per-minute: 10, burst: 5 }
+      stream: { per-minute: 10, burst: 5 }
   outbox:
     enabled: ${ORO_OUTBOX_ENABLED:true}
     poll-interval: PT1S

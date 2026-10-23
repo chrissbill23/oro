@@ -102,6 +102,8 @@ public abstract class PostgresIntegrationTest {
     @Autowired
     protected TestOutboxHandler outboxHandler;
     @Autowired
+    protected com.asata.org.oro.config.ratelimit.RateLimiter rateLimiter;
+    @Autowired
     protected DbSession session;
     /** the JdbcTemplate of the API: oro_api, in the transactions of {@link #tx} */
     @Autowired
@@ -118,6 +120,8 @@ public abstract class PostgresIntegrationTest {
                 TRUNCATE oro_outbox_event, oro_message_reaction, oro_attachment, oro_message, oro_conversation_member, oro_conversation,
                          oro_organization_access, oro_organization_sync, oro_messaging_identity""");
         outboxHandler.reset();
+        // the limits of the users count again: a test is not limited by the requests of the others
+        rateLimiter.reset();
     }
 
     protected UUID oroUser(String name) {

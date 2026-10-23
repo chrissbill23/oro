@@ -260,7 +260,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Verification: a test that captures the logs (`OutputCaptureExtension`) while a constraint refuses a message with
     a known body
 
-- [ ] `ORO-SEC-010` — P0 — Rate limits on the public API
+- [x] `ORO-SEC-010` — P0 — Rate limits on the public API
+  - Done (2026-10-23): token buckets per user (issuer and subject) and kind of request, in memory (`config/ratelimit`), limits in `oro.rate-limits`; 429 with `Retry-After` before any work. Umoja's nginx limits each address (50 r/s, bursts of 200). Checked on the local stack. Tested: `RateLimiterTest`, `RateLimitTest`. Per instance: a shared counter with `ORO-SCL-006`.
   - Current state: Missing
   - Evidence: no limiter in `oro/backend/pom.xml` nor in the code; every route of `MessageApi`, `ConversationApi`,
     `AttachmentApi`, `LiveApi` is unlimited; `POST /conversations/{id}/typing` fans out to every member's stream.
@@ -886,7 +887,7 @@ below are scenarios that are not covered.
   - Launch impact: Blocker
   - Verification: CI
 
-- [ ] `ORO-TST-007` — P4 — Rate limits
+- [x] `ORO-TST-007` — P4 — Rate limits
   - Current state: Missing
   - Evidence: `ORO-SEC-010`.
   - Action: 429 on each limited route; normal use unaffected.

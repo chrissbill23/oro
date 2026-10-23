@@ -68,6 +68,7 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | `ORO_STORAGE_PROVIDER` | `local` | Where the files of the attachments go: `local` (a disk, `ORO_ATTACHMENTS_DIR`); another provider needs its `FileStorage`, until then nothing can be uploaded |
 | `ORO_ATTACHMENTS_DIR` | `./data/attachments` (`/data/attachments` in Docker, a volume) | The directory of the local storage |
 | `ORO_ATTACHMENTS_SCAN` | `none` | `none`: no malware scanner, a file is recorded clean unscanned (**development only**); anything else: the files stay pending, not downloadable, until a scanner records its result |
+| `ORO_RATE_LIMITS` | `true` | The [rate limits](#rate-limits) of the users; `false` only to measure without them |
 | `ORO_CORS_ALLOWED_ORIGINS` | `http://localhost:4200,http://localhost:4201` | Browser origins allowed to call the API |
 
 ### Backend locally
@@ -107,6 +108,8 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `LiveAuthorizationTest` | Revocation, suspension and deactivation close the streams with their commit; the periodic check closes what changed elsewhere; a stream lasts as long as its token |
 | `IntegrationKeyTest` | During a rotation both keys open `/internal`; the logs name the key used, never the key; a key not listed, a short one or the stored hash itself is refused |
 | `IntegrationKeysConfigTest` | The keys are configured as `name:sha256` only: the key itself, a name twice or a key for two products is refused |
+| `RateLimiterTest` | A bucket: the burst, then the rate, the wait until the next request; never more than the burst; the idle buckets go |
+| `RateLimitTest` | Over HTTP: 429 with `Retry-After` and nothing created; the other kinds and the other users are not limited by it; every request counts in `any` |
 | `JwkSetUriTest` | The public keys are read from where the product publishes them, at the first token then for a new `kid`: a rotation needs no restart; an unpublished key is refused |
 | `LogPrivacyTest` | A message refused by the database leaves its constraint in the logs, never its text nor the refused row |
 | `AttachmentTest` | Metadata is visible only to those who can read the message, even with the storage key; downloads need an uploaded and clean file; the API cannot mark a file clean; a sender can attach only their own uploads; a deleted message's files are hidden and marked for purge; file names cannot be paths |
@@ -178,6 +181,31 @@ curl -H "Authorization: Bearer $TOKEN" -H "x-organization-id: <organization id>"
 # Umoja's integration: Amara joins Acme's conversations
 curl -X PUT -H "x-integration-key: $UMOJA_INTEGRATION_KEY" http://localhost:8082/oro/internal/organizations/<org>/members/<asata user id>   # the key, as Umoja has it
 ```
+
+## Rate limits
+
+Each user (the issuer and subject of its token) has buckets per kind of request, in the memory of the instance
+(`RateLimitInterceptor`, `oro.rate-limits`): a burst at once, then a rate a minute. Every request takes from `any`, and
+the costly or noisy ones from their own bucket too. Over a limit: 429 with `Retry-After`, before any work of the request
+(no database, nothing stored).
+
+| Kind | Requests | A minute | Burst |
+|---|---|---|---|
+| `any` | every request of a user | 300 | 100 |
+| `send` | `POST /conversations/{id}/messages` | 60 | 20 |
+| `change-message` | `PUT`, `DELETE /messages/{id}` | 30 | 10 |
+| `react` | `PUT`, `DELETE /messages/{id}/reactions/{emoji}` | 60 | 20 |
+| `typing` | `POST /conversations/{id}/typing` | 30 | 5 |
+| `search` | `GET /search/messages` | 20 | 5 |
+| `open-direct` | `POST /conversations/direct` | 20 | 10 |
+| `create-group` | `POST /conversations/groups` | 3 | 5 |
+| `add-member` | `POST /conversations/{id}/members` | 30 | 20 |
+| `upload` | `POST /conversations/{id}/attachments` | 10 | 5 |
+| `stream` | `GET /stream` | 10 | 5 |
+
+The integrations (`/internal`) are trusted and not limited. In front, the proxy of a product limits each address
+(Umoja's nginx: 50 a second, bursts of 200, generous because an office behind one address is many users). With several
+instances, each counts apart: the limits move to a shared counter then.
 
 ## Team chats and the Umoja synchronization
 

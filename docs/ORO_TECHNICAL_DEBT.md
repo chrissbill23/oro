@@ -91,9 +91,10 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 
 ## Runtime
 
-### One instance: streams and presence in memory
+### One instance: streams, presence and rate limits in memory
 
-- **Today**: `LiveHub` keeps the streams and who is online in the memory of the instance; rate limits will too.
+- **Today**: `LiveHub` keeps the streams and who is online in the memory of the instance, and `RateLimiter` the
+  buckets of the rate limits (a restart refills them; two instances would each allow the full rate).
 - **Why**: no message broker, nothing more to run.
 - **Risk**: one instance is a single point of failure; a restart drops every stream (clients reconnect and catch up);
   capacity is bounded by one machine.

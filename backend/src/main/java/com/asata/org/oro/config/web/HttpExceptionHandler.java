@@ -2,12 +2,14 @@ package com.asata.org.oro.config.web;
 
 import com.asata.org.oro.dto.ErrorDTO;
 import com.asata.org.oro.exception.Conflict;
+import com.asata.org.oro.exception.TooManyRequests;
 import com.asata.org.oro.exception.Forbidden;
 import com.asata.org.oro.exception.NotFound;
 import com.asata.org.oro.exception.Unauthorized;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -69,6 +71,13 @@ public class HttpExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorDTO> noRoute(NoResourceFoundException e, HttpServletRequest request) {
         return error(request, HttpStatus.NOT_FOUND, "No such route", null);
+    }
+
+    @ExceptionHandler(TooManyRequests.class)
+    public ResponseEntity<ErrorDTO> tooManyRequests(TooManyRequests e, HttpServletRequest request) {
+        ResponseEntity<ErrorDTO> error = error(request, HttpStatus.TOO_MANY_REQUESTS, e.getMessage(), null);
+        return ResponseEntity.status(error.getStatusCode()).header(HttpHeaders.RETRY_AFTER, Long.toString(e.getRetryAfterSeconds()))
+                .body(error.getBody());
     }
 
     @ExceptionHandler(Conflict.class)
