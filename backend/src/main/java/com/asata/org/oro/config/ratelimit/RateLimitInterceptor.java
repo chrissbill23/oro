@@ -4,6 +4,7 @@ import com.asata.org.oro.exception.TooManyRequests;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.core.Authentication;
@@ -52,10 +53,12 @@ public class RateLimitInterceptor implements HandlerInterceptor {
 
     private final RateLimiter limiter;
     private final RateLimitProperties properties;
+    private final MeterRegistry meters;
 
-    public RateLimitInterceptor(RateLimiter limiter, RateLimitProperties properties) {
+    public RateLimitInterceptor(RateLimiter limiter, RateLimitProperties properties, MeterRegistry meters) {
         this.limiter = limiter;
         this.properties = properties;
+        this.meters = meters;
         if (properties.isEnabled() && !properties.getLimits().containsKey(ANY)) {
             throw new IllegalStateException("oro.rate-limits.limits.any: the limit of every request of a user");
         }
@@ -93,6 +96,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         }
         long retryAfter = limiter.acquire(caller, kind, limit);
         if (retryAfter > 0) {
+            meters.counter("oro.rate.limit.refused", "kind", kind).increment();
             log.info("rate limit {} reached by {}", kind, caller);
             throw new TooManyRequests("Too many requests (" + kind + "), try again in " + retryAfter + " s", retryAfter);
         }

@@ -1,3 +1,7 @@
+# the actuator on the port of the API in the tests (MockMvc)
+management:
+  server:
+    port: ""
 # the datasources (a Testcontainers PostgreSQL 17, logins oro_api and oro_worker) are set by PostgresIntegrationTest
 spring:
   datasource:

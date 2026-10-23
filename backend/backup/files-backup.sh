@@ -12,6 +12,8 @@ restic cat config >/dev/null 2>&1 || restic init || exit 1
 while true; do
     if restic backup --quiet --tag oro-attachments --exclude /data/attachments/.incoming /data/attachments; then
         echo "files-backup: snapshot done"
+        # its time, for the metrics of Oro (oro_files_backup_age_seconds) and its alert
+        date +%s > /status/last-success.tmp && mv /status/last-success.tmp /status/last-success
         restic forget --quiet --tag oro-attachments --keep-hourly 24 --keep-daily 14 --prune \
             || echo "files-backup: forget FAILED" >&2
     else

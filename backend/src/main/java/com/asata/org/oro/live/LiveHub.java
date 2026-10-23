@@ -151,7 +151,7 @@ public class LiveHub {
     }
 
     /** the streams open on this instance */
-    int openStreams() {
+    public int openStreams() {
         return open.get();
     }
 

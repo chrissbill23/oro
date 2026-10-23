@@ -1,0 +1,136 @@
+# The alerts of Oro. critical: someone acts now (users are hit, or data is at risk); warning: within the day.
+groups:
+  - name: oro-service
+    rules:
+      - alert: OroDown
+        expr: up{job="oro"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Oro does not answer Prometheus"
+          description: "The backend has been down or unreachable for 2 minutes: no messages, no streams."
+      - alert: OroServerErrors
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="oro", status=~"5.."}[5m]))
+            / sum(rate(http_server_requests_seconds_count{job="oro"}[5m])) > 0.05
+          and sum(rate(http_server_requests_seconds_count{job="oro"}[5m])) > 0.1
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "More than 5 % of the requests to Oro fail (5xx)"
+          description: "{{ $value | humanizePercentage }} of the requests answered 5xx over 5 minutes. See the logs by request id."
+      - alert: OroErrorsLogged
+        expr: increase(logback_events_total{job="oro", level="error"}[10m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Oro logged errors"
+          description: "{{ $value | humanize }} error lines in 10 minutes (the disk of the files full, an unexpected exception...)."
+      - alert: OroSendsSlow
+        expr: histogram_quantile(0.99, sum by (le) (rate(oro_messages_send_seconds_bucket[5m]))) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Sending a message takes more than 0.5 s (p99)"
+          description: "p99 of a send at {{ $value | humanizeDuration }} for 10 minutes: the database, the locks of busy conversations."
+      - alert: OroConversationLockWaits
+        expr: histogram_quantile(0.99, sum by (le) (rate(oro_conversation_lock_seconds_bucket[5m]))) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Sends wait for the lock of their conversation (p99 over 50 ms)"
+          description: "Busy conversations: the sends of one conversation take turns (ORO-SCL-003)."
+      - alert: OroDatabasePoolExhausted
+        expr: max by (pool) (hikaricp_connections_pending{job="oro"}) > 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Requests wait for a database connection ({{ $labels.pool }})"
+          description: "The pool {{ $labels.pool }} has had waiting requests for 2 minutes."
+      - alert: OroStreamsNearTheCap
+        expr: oro_streams_open > 8000
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} streams open, the instance takes 10,000"
+          description: "Past 10,000 new streams are refused (503): a second instance is needed (ORO-SCL-006)."
+      - alert: OroDatabaseMetricsUnknown
+        expr: oro_outbox_pending != oro_outbox_pending
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Oro cannot read its metrics from the database"
+          description: "The gauges of the outbox, the scans and the archiving are unknown (NaN): the database or the worker's login."
+
+  - name: oro-pipelines
+    rules:
+      - alert: OroOutboxLag
+        expr: oro_outbox_oldest_pending_seconds > 60
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "The live events are late (oldest waiting {{ $value | humanizeDuration }})"
+          description: "The outbox worker is stuck or slow: users see new messages only when they reload."
+      - alert: OroOutboxFailed
+        expr: oro_outbox_failed > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} outbox event(s) failed for good"
+          description: "Look at last_error_code in oro_outbox_event, fix, then replay (backend README, Operations)."
+      - alert: OroScansWaiting
+        expr: oro_attachments_scan_oldest_pending_seconds > 600
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Files wait for their malware scan for more than 10 minutes"
+          description: "{{ with query \"oro_attachments_scan_pending\" }}{{ . | first | value }}{{ end }} file(s) not downloadable: clamd is away or failing."
+      - alert: OroAttachmentsDiskLow
+        expr: oro_attachments_disk_free_bytes < 5e9
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | humanize1024 }}B left on the disk of the files"
+          description: "Below 1 GiB, uploads are refused (503)."
+      - alert: OroAttachmentsDiskFull
+        expr: oro_attachments_disk_free_bytes < 1.5e9
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "The disk of the files is nearly full ({{ $value | humanize1024 }}B)"
+          description: "Uploads are refused below 1 GiB: free space, or move the files to an object storage."
+
+  - name: backups
+    rules:
+      - alert: DatabaseBackupTooOld
+        expr: min by (stanza) (pgbackrest_backup_since_last_completion_seconds) > 26 * 3600
+        labels: { severity: critical }
+        annotations:
+          summary: "No backup of the database for {{ $value | humanizeDuration }}"
+          description: "The daily backup did not complete: look at `docker compose logs backup` (1_ASATA_DATABASE)."
+      - alert: DatabaseBackupRepositoryUnhealthy
+        expr: pgbackrest_stanza_status != 0
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "The repository of the database backups is not healthy (stanza {{ $labels.stanza }})"
+          description: "pgbackrest info reports a problem: run `docker exec asata-postgres-1 pgbackrest info`."
+      - alert: DatabaseBackupStateUnknown
+        expr: up{job="pgbackrest"} == 0 or pgbackrest_exporter_status == 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "The state of the database backups cannot be read"
+          description: "pgbackrest_exporter is down or cannot read the repository (its passphrase?)."
+      - alert: WalArchivingFailing
+        expr: oro_wal_archive_failed == 1
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "PostgreSQL cannot archive its WAL"
+          description: "Point-in-time recovery is broken, and WAL piles up on the disk of the database. See its logs."
+      - alert: FilesBackupTooOld
+        expr: oro_files_backup_age_seconds > 3 * 3600 or oro_files_backup_age_seconds != oro_files_backup_age_seconds
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "No backup of the files of the attachments for 3 hours, or none known"
+          description: "Look at `docker compose logs files-backup` (oro)."

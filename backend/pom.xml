@@ -46,6 +46,11 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
         </dependency>
+        <!-- the metrics, for Prometheus (/actuator/prometheus on the management port) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
         <!-- the type of an uploaded file from its bytes, not from what the client says (tika-core: detection only) -->
         <dependency>
             <groupId>org.apache.tika</groupId>

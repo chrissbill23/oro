@@ -4,6 +4,7 @@ import com.asata.org.oro.attachment.service.AttachmentService;
 import com.asata.org.oro.attachment.storage.FileStorage;
 import com.asata.org.oro.context.DbSession;
 import com.asata.org.oro.enums.ScanStatus;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -28,9 +29,11 @@ public class AttachmentScanning {
     private final ObjectProvider<FileStorage> storage;
     private final AttachmentService attachments;
     private final DbSession session;
+    private final MeterRegistry meters;
 
     public AttachmentScanning(ObjectProvider<MalwareScanner> scanner, ObjectProvider<FileStorage> storage,
-                              AttachmentService attachments, DbSession session) {
+                              AttachmentService attachments, DbSession session, MeterRegistry meters) {
+        this.meters = meters;
         this.scanner = scanner;
         this.storage = storage;
         this.attachments = attachments;
@@ -61,6 +64,7 @@ public class AttachmentScanning {
             case FAILED -> ScanStatus.FAILED;
         };
         attachments.recordScan(attachmentId, status);
+        meters.counter("oro.attachments.scanned", "result", status.code()).increment();
         if (status == ScanStatus.INFECTED) {
             log.warn("attachment {} infected ({}): its file is deleted", attachmentId, verdict.signature());
             try {

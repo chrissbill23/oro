@@ -88,6 +88,15 @@ public class LocalFileStorage implements FileStorage {
     }
 
     @Override
+    public long usableSpace() {
+        try {
+            return Files.getFileStore(root).getUsableSpace();
+        } catch (IOException e) {
+            return -1;
+        }
+    }
+
+    @Override
     public void requireSpace(long bytes) {
         long usable;
         try {

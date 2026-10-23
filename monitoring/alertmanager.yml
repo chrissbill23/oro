@@ -1,0 +1,25 @@
+# Alertmanager of Oro: groups the alerts of Prometheus and sends them. Here they are only shown
+# (http://localhost:9093). In production, give the receiver a way to reach someone, for example:
+#
+#   receivers:
+#     - name: oncall
+#       email_configs:
+#         - to: ops@example.org
+#           from: alerts@example.org
+#           smarthost: smtp.example.org:587
+#           auth_username: alerts@example.org
+#           auth_password_file: /etc/alertmanager/smtp-password
+#       slack_configs:
+#         - api_url_file: /etc/alertmanager/slack-webhook
+#           channel: "#oro-alerts"
+#
+# and the critical alerts to it at once, the warnings grouped.
+route:
+  receiver: shown-only
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: shown-only

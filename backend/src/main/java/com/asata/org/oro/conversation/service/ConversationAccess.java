@@ -8,6 +8,7 @@ import com.asata.org.oro.conversation.repository.ConversationRepository;
 import com.asata.org.oro.enums.IdentityStatus;
 import com.asata.org.oro.exception.NotFound;
 import com.asata.org.oro.identity.repository.MessagingIdentityRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,7 @@ public class ConversationAccess {
     private final ConversationRepository conversations;
     private final ConversationMemberRepository members;
     private final MessagingIdentityRepository identities;
+    private final MeterRegistry meters;
 
     public Conversation requireConversation(Actor actor, UUID conversationId) {
         return inContext(actor, conversations.findById(conversationId));
@@ -34,7 +36,8 @@ public class ConversationAccess {
 
     /** the conversation, locked for a send or a change of its sequence */
     public Conversation lockConversation(Actor actor, UUID conversationId) {
-        return inContext(actor, conversations.lockById(conversationId));
+        // oro.conversation.lock: the wait for the row of the conversation (the sends of a conversation take turns)
+        return meters.timer("oro.conversation.lock").record(() -> inContext(actor, conversations.lockById(conversationId)));
     }
 
     public ConversationMember requireActiveMember(Actor actor, Conversation conversation) {

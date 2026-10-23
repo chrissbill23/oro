@@ -5,6 +5,8 @@ import com.asata.org.oro.identity.service.IdentityService;
 import com.asata.org.oro.message.dto.*;
 import com.asata.org.oro.message.entity.Message;
 import com.asata.org.oro.message.service.MessageService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +20,7 @@ import java.util.*;
 public class MessageController implements MessageApi {
 
     private final MessageService messages;
+    private final MeterRegistry meters;
     private final IdentityService identities;
 
     @Override
@@ -39,9 +42,18 @@ public class MessageController implements MessageApi {
         if (metadata != null && !metadata.isObject()) {
             throw new IllegalArgumentException("metadata is a JSON object");
         }
-        SendResult result = messages.send(actor, conversationId, new SendMessage(request.clientMessageId(), request.type(),
-                request.body(), metadata == null ? null : metadata.toString(),
-                request.attachmentIds() == null ? List.of() : request.attachmentIds()));
+        // oro.messages.send: the time of a send, its commit included, by outcome (created, duplicate, refused)
+        Timer.Sample sample = Timer.start(meters);
+        String outcome = "refused";
+        SendResult result;
+        try {
+            result = messages.send(actor, conversationId, new SendMessage(request.clientMessageId(), request.type(),
+                    request.body(), metadata == null ? null : metadata.toString(),
+                    request.attachmentIds() == null ? List.of() : request.attachmentIds()));
+            outcome = result.duplicate() ? "duplicate" : "created";
+        } finally {
+            sample.stop(meters.timer("oro.messages.send", "outcome", outcome, "product", actor.product().code()));
+        }
         return ResponseEntity.status(result.duplicate() ? HttpStatus.OK : HttpStatus.CREATED)
                 .body(toDtos(actor, List.of(result.message())).getFirst());
     }

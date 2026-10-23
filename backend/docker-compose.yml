@@ -37,9 +37,14 @@ services:
       # every file scanned by clamd before it can be downloaded (none: development without a scanner, never in production)
       ORO_ATTACHMENTS_SCAN: ${ORO_ATTACHMENTS_SCAN:-clamav}
       ORO_CLAMAV_HOST: clamav
+      ORO_FILES_BACKUP_STATUS: /backup-status/last-success
+      # the logs as JSON (Elastic Common Schema), the request id in each line
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ${ORO_LOG_FORMAT:-ecs}
     volumes:
       # the files of the attachments (local storage), kept across rebuilds
       - attachments:/data/attachments
+      # when the backup of the files last succeeded (files-backup writes it), for the metrics
+      - files-backup-status:/backup-status:ro
     networks:
       default:
       asata:
@@ -81,13 +86,39 @@ services:
     volumes:
       - attachments:/data/attachments:ro
       - files-backup-repo:/repo
+      - files-backup-status:/status
       - ./backup:/backup:ro
+    restart: unless-stopped
+
+  # the monitoring: Prometheus (metrics and alert rules, ../monitoring) and Alertmanager (the alerts, grouped and sent),
+  # on this machine only: http://localhost:9090 and http://localhost:9093
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      default:
+      asata:
+    ports:
+      - "127.0.0.1:${ORO_PROMETHEUS_PORT:-9090}:9090"
+    restart: unless-stopped
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    volumes:
+      - ../monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "127.0.0.1:${ORO_ALERTMANAGER_PORT:-9093}:9093"
     restart: unless-stopped
 
 volumes:
   attachments:
+  prometheus-data:
   clamav-signatures:
   files-backup-repo:
+  files-backup-status:
 
 networks:
   # created by ../../1_ASATA_DATABASE/docker-compose.yml

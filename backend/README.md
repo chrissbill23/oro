@@ -75,6 +75,8 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | `ORO_MULTIPART_DIR` | the server's temporary directory (`/data/attachments/.incoming` in Docker) | Where an upload is received before it is stored: the data volume, not the disk of the system |
 | `ORO_FILES_BACKUP_PASSWORD` | none | The passphrase of the backups of the files (restic); unset: no backup. Lost, the backups are lost with it |
 | `ORO_FILES_BACKUP_REPOSITORY`, `ORO_FILES_BACKUP_S3_KEY`, `ORO_FILES_BACKUP_S3_SECRET` | a volume | Where the backups of the files go: `s3:<endpoint>/<bucket>/oro-files` and its keys in production |
+| `ORO_MANAGEMENT_PORT` | `9082` | The actuator (health, `/actuator/prometheus`), never published: Prometheus reads it on the private network |
+| `ORO_LOG_FORMAT` | `ecs` here | The logs as JSON (Elastic Common Schema), the request id in each line; unset outside Docker: plain lines |
 | `ORO_RATE_LIMITS` | `true` | The [rate limits](#rate-limits) of the users; `false` only to measure without them |
 | `ORO_CORS_ALLOWED_ORIGINS` | `http://localhost:4200,http://localhost:4201` | Browser origins allowed to call the API |
 
@@ -121,6 +123,7 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `ImageMetadataTest` | JPEG, PNG and WebP lose their Exif, XMP, texts and comments, keep their pixels and the JPEG orientation; a file that is not the image it says is refused |
 | `FileTypesTest`, `FileUploadTest` | The type comes from the bytes: a page declared as an image is downloaded, never shown; a photo is stored without its metadata; a broken image is refused |
 | `MalwareScanTest` | Against a clamd of the test: clean files downloadable, EICAR refused and deleted, nothing downloadable while clamd is away then scanned, a file clamd cannot read never downloadable |
+| `MetricsTest` | Prometheus reads Oro without a token: the gauges follow the database (the outbox), the sends are timed, the lock waits and the refused requests counted |
 | `RateLimiterTest` | A bucket: the burst, then the rate, the wait until the next request; never more than the burst; the idle buckets go |
 | `RateLimitTest` | Over HTTP: 429 with `Retry-After` and nothing created; the other kinds and the other users are not limited by it; every request counts in `any` |
 | `JwkSetUriTest` | The public keys are read from where the product publishes them, at the first token then for a new `kid`: a rotation needs no restart; an unpublished key is refused |
@@ -618,6 +621,52 @@ queries stay single-partition) when one of these holds:
 - retention needs to drop old data in bulk (then range by time instead).
 
 Watch `pg_stat_user_tables` (dead tuples, vacuum times), the index sizes, and the p99 of the page and send queries.
+
+## Monitoring
+
+Prometheus and Alertmanager run next to Oro (the compose file, `../monitoring`), on this machine only:
+http://localhost:9090 (metrics, alerts) and http://localhost:9093 (the alerts, grouped). Prometheus reads Oro's
+`/actuator/prometheus` on its management port (9082, never published) and the state of the database backups
+(`pgbackrest_exporter`, `1_ASATA_DATABASE`), every 15 s.
+
+What Oro measures, besides the requests by route and status (`http_server_requests_seconds`), the connection pools
+(`hikaricp_*`), the JVM and the lines logged by level (`logback_events_total`):
+
+| Metric | What |
+|---|---|
+| `oro_messages_send_seconds{outcome}` | A send, its commit included: created, duplicate, refused |
+| `oro_conversation_lock_seconds` | The wait for the row of a conversation (sends take turns) |
+| `oro_streams_open` | The streams open on the instance |
+| `oro_outbox_pending`, `oro_outbox_failed`, `oro_outbox_oldest_pending_seconds` | The outbox: waiting, failed for good, the lag of the live events |
+| `oro_attachments_scan_pending`, `oro_attachments_scan_oldest_pending_seconds` | The files waiting for their malware scan |
+| `oro_attachments_scanned_total{result}` | The scans: clean, infected, failed |
+| `oro_attachments_disk_free_bytes` | The free space of the disk of the files |
+| `oro_rate_limit_refused_total{kind}` | The requests refused by a rate limit |
+| `oro_wal_archive_age_seconds`, `oro_wal_archive_failed` | The WAL archiving of the database (point-in-time recovery) |
+| `oro_files_backup_age_seconds` | Since the last backup of the files |
+| `pgbackrest_backup_since_last_completion_seconds` | Since the last backup of the database (the exporter) |
+
+The values of the database are read every 15 s by one query each, as `oro_system`, and kept: a scrape never queries
+the database. Unknown is NaN, never 0, so that an alert on a missing value fires.
+
+The alerts (`monitoring/rules.yml`): **critical** means someone acts now, **warning** within the day.
+
+| Alert | When |
+|---|---|
+| `OroDown` (critical) | Oro does not answer for 2 minutes |
+| `OroServerErrors` (critical) | More than 5 % of the requests answer 5xx for 5 minutes |
+| `OroOutboxLag` (critical) | The oldest live event waits for more than a minute, for 2 minutes |
+| `OroAttachmentsDiskFull` (critical) | Less than 1.5 GB left for the files (uploads stop at 1 GiB) |
+| `DatabaseBackupTooOld` (critical) | No database backup for 26 hours |
+| `DatabaseBackupRepositoryUnhealthy`, `WalArchivingFailing` (critical) | The backup repository or the WAL archiving is broken |
+| `OroErrorsLogged`, `OroOutboxFailed`, `OroScansWaiting`, `OroAttachmentsDiskLow`, `OroSendsSlow`, `OroConversationLockWaits`, `OroDatabasePoolExhausted`, `OroStreamsNearTheCap`, `OroDatabaseMetricsUnknown`, `DatabaseBackupStateUnknown`, `FilesBackupTooOld` (warning) | The rest, each with its description in the rules |
+
+Here the alerts are only shown. For production, give Alertmanager a receiver that reaches someone (email, Slack: the
+examples are in `monitoring/alertmanager.yml`). Check a change of the rules with
+`docker run --rm -v "$PWD/monitoring:/m:ro" --entrypoint promtool prom/prometheus:v3.15.0 check rules /m/rules.yml`.
+
+On 2026-10-23, a failed outbox event inserted by hand reached Alertmanager as `OroOutboxFailed` in 15 s, and cleared
+once removed.
 
 ## Operations
 

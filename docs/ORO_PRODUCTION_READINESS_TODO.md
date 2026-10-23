@@ -501,7 +501,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: `SchemaScriptTest` builds from the migrations and compares with the current schema
 
-- [ ] `ORO-LCH-010` — P1 — Structured logs, metrics and alerts
+- [x] `ORO-LCH-010` — P1 — Structured logs, metrics and alerts
+  - Done (2026-10-23): JSON logs (ECS) with the request id; Micrometer and Prometheus on the management port 9082 (never published); the metrics listed in the backend README (sends, lock waits, streams, outbox, scans, disk, rate limits, WAL archiving, the backups of the files and of the database through `pgbackrest_exporter`); Prometheus v3.15.0 and Alertmanager v0.34.1 in the compose file, 18 alert rules (`monitoring/rules.yml`). Checked: a failed outbox event reached Alertmanager in 15 s. Tested: `MetricsTest`. Left: a receiver that reaches someone (email, Slack) in production, and an error tracker (the `OroErrorsLogged` alert stands in for it).
   - Current state: Missing (plain text logs, actuator `health` and `info` only)
   - Evidence: `oro/backend/pom.xml` (no Micrometer registry), `application.yml` (`management.endpoints`), no logging
     configuration file.
@@ -517,6 +518,7 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Verification: a staging run that triggers each alert
 
 - [ ] `ORO-LCH-011` — P1 — Readiness and liveness checks
+  - Partly done (2026-10-23): `/actuator/health/liveness` and `/readiness` (with the database) on the management port; left: wiring them to the orchestrator.
   - Current state: Partially implemented (`/actuator/health`, public, no details)
   - Evidence: `application.yml` (`management.endpoint.health`); `oro/backend/Dockerfile` has no `HEALTHCHECK`.
   - Action: liveness and readiness groups (readiness includes the database); a `HEALTHCHECK` in the image or the

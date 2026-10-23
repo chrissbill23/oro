@@ -23,6 +23,11 @@ public interface FileStorage {
     default void forEachKey(java.time.Instant changedBefore, java.util.function.Consumer<String> key) throws IOException {
     }
 
+    /** the bytes the storage may still take, for the metrics; -1 when it does not say (an object storage) */
+    default long usableSpace() {
+        return -1;
+    }
+
     /** refuses (ServiceUnavailable) a file of this size when the storage is short of space; nothing by default */
     default void requireSpace(long bytes) {
     }

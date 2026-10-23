@@ -57,14 +57,32 @@ springdoc:
     path: /doc
     url: /doc/api
 management:
+  # the actuator on its own port, never published: Prometheus reads it on the private network (9082); the health too
+  server:
+    port: ${ORO_MANAGEMENT_PORT:9082}
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health, info, prometheus
   endpoint:
     health:
-      # the details (database...) to nobody: /actuator/health is public
+      # the details (database...) to nobody
       show-details: never
+      # /actuator/health/liveness and /readiness (readiness: the database too)
+      probes:
+        enabled: true
+  health:
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: oro
+    distribution:
+      # the percentiles in Prometheus (histogram_quantile): the requests, a send
+      percentiles-histogram:
+        http.server.requests: true
+        oro.messages.send: true
+        oro.conversation.lock: true
 oro:
   # the worker's login, for the integrations and the workers: NOINHERIT, a member of oro_system only; the same database
   system-datasource:
@@ -149,6 +167,9 @@ oro:
       pending-after: PT1H
     # the local storage keeps this much of its disk free (503 beyond)
     local-min-free-bytes: ${ORO_ATTACHMENTS_MIN_FREE_BYTES:1073741824}
+  # what the metrics read (OroMetrics): the age of the last backup of the files, from the file the backup writes
+  monitoring:
+    files-backup-status: ${ORO_FILES_BACKUP_STATUS:}
   live:
     # a comment on every stream, so that the proxies keep them open
     heartbeat: PT25S

@@ -80,6 +80,8 @@ public class SecurityConfig {
                         // the end of a stream (SseEmitter) is an async dispatch of a request authenticated at its start
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/ping", "/error", "/actuator/health/**", "/doc/**").permitAll()
+                        // the actuator is served on the management port only (never published): Prometheus, unauthenticated
+                        .requestMatchers("/actuator/info", "/actuator/prometheus").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         // the issuer, read from the token, picks the key; an unknown issuer is refused

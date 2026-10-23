@@ -1,0 +1,24 @@
+# Prometheus of Oro: the metrics of the backend (its management port, never published) and of the backups of the
+# database, every 15 s; the alerts of rules.yml, sent to Alertmanager
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: oro
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["oro:9082"]
+  # the backups of the shared database (1_ASATA_DATABASE, pgbackrest_exporter), on the network asataDB
+  - job_name: pgbackrest
+    scrape_interval: 60s
+    static_configs:
+      - targets: ["asata-backup-exporter:9854"]
