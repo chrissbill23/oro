@@ -28,8 +28,10 @@ The choices that limit Oro today, why they were made, what they risk, and when t
   means a new one at each start.
 - **Risk**: whoever reads Umoja's environment can sign its tokens; a forgotten key in production makes every restart
   sign everyone out.
-- **Revisit**: with the secrets of production (`ORO-LCH-008`): the key in a secret store or a KMS, and a production
-  profile that refuses to start without it; a scheduled rotation (`UMOJA_JWT_PREVIOUS_KEYS`).
+- **Revisit**: Oro reads its secrets from files and refuses to start on settings of development (`ORO-LCH-008`, done
+  on 2026-10-23), but Umoja does not yet: its key still comes from `backend/.env.local`, and it still starts with a
+  new key when none is set. Next: the key as a secret file, a production profile in Umoja that refuses to start
+  without it, a scheduled rotation (`UMOJA_JWT_PREVIOUS_KEYS`).
 
 ### Integration keys over plain HTTP
 
@@ -118,25 +120,29 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 
 - **Today**: the only handler is `LiveOutboxEventHandler`; events retry for up to an hour.
 - **Why**: the outbox was built ahead for push and other consumers.
-- **Risk**: live events retried after minutes are useless; `failed` events have no alert yet.
-- **Revisit**: now for the alert and a time-to-live (`ORO-LCH-013`); with push for deduplication (`ORO-SCL-010`).
+- **Risk**: live events retried after minutes are useless. A `failed` event raises the alert `OroOutboxFailed`
+  (since 2026-10-23), but there is no replay script yet.
+- **Revisit**: now for a time-to-live and the replay (`ORO-LCH-013`); with push for deduplication (`ORO-SCL-010`).
 
-### Quotas count abandoned uploads
+### Quotas can be passed by one file
 
-- **Today**: the storage quota of a user counts every file not deleted, the uploads never attached to a message
-  included, until the purge job removes them (`ORO-LCH-006`, not written); two uploads at the same moment may both
-  pass the quota.
-- **Risk**: a user whose uploads failed may find its quota full; a quota overshoot of one file.
-- **Revisit**: with the purge job (abandoned uploads gone after 24 h), or when users report it.
+- **Today**: the storage quota of a user counts every file not deleted. The uploads never attached to a message count
+  until the purge job removes them after 24 h (`AttachmentPurge`, since 2026-10-23). Two uploads at the same moment
+  may both pass the quota.
+- **Risk**: a user whose uploads failed may find its quota full for up to a day; a quota overshoot of one file.
+- **Revisit**: when users report it.
 
 ### Files through the API on a local disk
 
-- **Today**: `LocalFileStorage`; uploads and downloads stream through the API; scanned by clamd (since 2026-10-23).
+- **Today**: `LocalFileStorage`; uploads and downloads stream through the API; scanned by clamd; the volume backed up
+  by restic, apart from the database (`files-backup`); all since 2026-10-23.
 - **Why**: one authorization path, nothing extra to run in development.
-- **Risk**: the files are not backed up with the database; API threads are busy with large transfers and their
-  scans; a file found clean later is not announced on the streams; ClamAV needs about 1.5 GB of memory.
-- **Revisit**: object storage before launch unless the volume is backed up (`ORO-LCH-003`); signed URLs only when
-  transfers load the API (measured); an event for a file scanned late if clients need it.
+- **Risk**: the files and the database are backed up apart, so a restore to a point in time can find a file missing
+  or a file with no row (the backend README, Recovering Oro); the files live on one server; API threads are busy with
+  large transfers and their scans; a file found clean later is not announced on the streams; ClamAV needs about
+  1.5 GB of memory.
+- **Revisit**: object storage when a second server is needed or the disk is too small (`ORO-LCH-003`); signed URLs
+  only when transfers load the API (measured); an event for a file scanned late if clients need it.
 
 ## Operations
 
@@ -158,11 +164,16 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 - **Revisit**: when Oro's load or its recovery needs differ from Umoja's: a separate database first (same
   server), a separate server after.
 
-### No CI, no metrics
+### CI and monitoring on one server
 
-- **Today**: tests run by hand; logs are plain text; only health and info are exposed.
-- **Risk**: regressions merge unseen; incidents are found by users.
-- **Revisit**: now (`ORO-LCH-017`, `ORO-LCH-010`).
+- **Today** (since 2026-10-23): CI runs the tests and builds the image on every push and pull request, and `main`
+  requires it to pass. Oro logs JSON, exposes its metrics on the management port, and Prometheus and Alertmanager run
+  next to it with 18 rules.
+- **Risk**: the monitoring runs on the server it watches, so a dead server alerts no one; Alertmanager has no receiver
+  yet (`shown-only`); there is no error tracker; CI reads the database repository at a feature branch
+  (`FA-13-fixes-and-improvements`).
+- **Revisit**: before going live: a receiver that reaches someone and an external uptime check. CI moves to `develop`
+  once that branch is merged.
 
 ## Product
 
