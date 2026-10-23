@@ -19,7 +19,7 @@ shared PostgreSQL 17 database. It runs on Docker at `http://localhost:8082/oro`.
 
 ## Security and privacy
 
-- Oro stores no password, email or credential. Each product signs the tokens of its users with its own secret and
+- Oro stores no password, email or credential. Each product signs the tokens of its users with its own private key and
   issuer; Oro checks them, and a token of one product is never accepted as the other's.
 - Every row carries its product, and every reference is a composite foreign key with it, so the database itself keeps
   an Oro user out of a Umoja conversation and the reverse.

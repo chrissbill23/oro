@@ -82,6 +82,9 @@ public abstract class PostgresIntegrationTest {
         registry.add("oro.system-datasource.url", POSTGRES::getJdbcUrl);
         registry.add("oro.system-datasource.username", () -> "oro_worker");
         registry.add("oro.system-datasource.password", () -> "oro_worker_test");
+        // the public keys of the products, as they publish them (new for each run): never OTHER
+        registry.add("oro.security.products.ORO.jwk-set", () -> TestTokens.publicJwkSet(TestTokens.ORO));
+        registry.add("oro.security.products.UMOJA.jwk-set", () -> TestTokens.publicJwkSet(TestTokens.UMOJA));
     }
 
     @Autowired

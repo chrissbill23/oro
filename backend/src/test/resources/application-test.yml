@@ -6,11 +6,11 @@ spring:
 oro:
   security:
     products:
+      # the public keys (TestTokens, new for each run) are set by PostgresIntegrationTest
       ORO:
-        jwt-secret: test-oro-jwt-secret-for-the-tests-only-0123456789
         integration-key: test-oro-integration-key-for-the-tests-0123456789
       UMOJA:
-        jwt-secret: test-umoja-jwt-secret-for-the-tests-only-0123456789
+        jwk-set-uri: ""
         integration-key: test-umoja-integration-key-for-the-tests-0123456789
   attachments:
     storage-provider: local

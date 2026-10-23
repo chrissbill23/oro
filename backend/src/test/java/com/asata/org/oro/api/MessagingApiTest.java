@@ -2,7 +2,6 @@ package com.asata.org.oro.api;
 
 import com.asata.org.oro.PostgresIntegrationTest;
 import com.jayway.jsonpath.JsonPath;
-import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,14 +9,12 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -34,7 +31,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = "oro.attachments.max-size-bytes=1000")
 class MessagingApiTest extends PostgresIntegrationTest {
 
-    private static final String UMOJA_SECRET = "test-umoja-jwt-secret-for-the-tests-only-0123456789";
     private static final String UMOJA_KEY = "test-umoja-integration-key-for-the-tests-0123456789";
     private static final String TEAM = "77777777-0000-4000-8000-000000000001";
 
@@ -46,12 +42,7 @@ class MessagingApiTest extends PostgresIntegrationTest {
     private String kwame;
 
     private static String umoja(String userId) {
-        JwtEncoder encoder = new NimbusJwtEncoder(new ImmutableSecret<>(new SecretKeySpec(
-                UMOJA_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256")));
-        Instant now = Instant.now();
-        JwtClaimsSet claims = JwtClaimsSet.builder().issuer("umoja").subject(userId).issuedAt(now)
-                .expiresAt(now.plus(10, ChronoUnit.MINUTES)).build();
-        return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+        return com.asata.org.oro.TestTokens.umoja(userId);
     }
 
     private ResultActions call(MockHttpServletRequestBuilder request, String token, String json) throws Exception {

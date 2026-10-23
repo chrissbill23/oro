@@ -76,15 +76,17 @@ oro:
   security:
     cors-allowed-origins: ${ORO_CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:4201}
     products:
-      # each product signs the access tokens of its users (HS256) with its own secret and issuer
+      # each product signs the access tokens of its users (RS256) with its own private key; Oro reads its public keys
+      # (a JWK set) and checks the issuer and the audience oro. Unset: that product's users cannot call Oro
       ORO:
         issuer: oro
-        jwt-secret: ${ORO_JWT_SECRET:}
+        # Oro's account system, to come
+        jwk-set-uri: ${ORO_JWKS_URI:}
         integration-key: ${ORO_INTEGRATION_KEY:}
       UMOJA:
-        # as Umoja issues them: umoja.security.jwt.issuer and UMOJA_JWT_SECRET of the Umoja backend
+        # as Umoja issues them: umoja.security.jwt.issuer, and its keys on /umoja/.well-known/jwks.json
         issuer: umoja
-        jwt-secret: ${UMOJA_JWT_SECRET:}
+        jwk-set-uri: ${UMOJA_JWKS_URI:http://localhost:8081/umoja/.well-known/jwks.json}
         integration-key: ${UMOJA_INTEGRATION_KEY:}
   outbox:
     enabled: ${ORO_OUTBOX_ENABLED:true}

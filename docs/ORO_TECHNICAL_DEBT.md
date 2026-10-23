@@ -21,13 +21,15 @@ The choices that limit Oro today, why they were made, what they risk, and when t
   services, the separate logins against `oro_system`, but not against an injection acting as another user.
 - **Revisit**: if an injection is ever found, or when the API moves to per-request database credentials (not planned).
 
-### Shared HMAC secrets between products
+### Signing keys in the environment
 
-- **Today**: Oro verifies Umoja tokens with Umoja's own HS256 secret (`config/security/SecurityConfig.java`).
-- **Why**: Umoja already signed HS256 tokens; no key infrastructure was needed.
-- **Risk**: whoever reads Oro's environment can sign Umoja tokens with admin roles. Each product added makes it
-  worse.
-- **Revisit**: now (`ORO-SEC-003`), and before Oro issues its own tokens.
+- **Today**: Umoja signs RS256 with its own private key and publishes the public ones; Oro holds no product secret
+  (since 2026-10-23). The private key is a variable of Umoja's environment (`UMOJA_JWT_SIGNING_KEY`), and an unset key
+  means a new one at each start.
+- **Risk**: whoever reads Umoja's environment can sign its tokens; a forgotten key in production makes every restart
+  sign everyone out.
+- **Revisit**: with the secrets of production (`ORO-LCH-008`): the key in a secret store or a KMS, and a production
+  profile that refuses to start without it; a scheduled rotation (`UMOJA_JWT_PREVIOUS_KEYS`).
 
 ### Static integration keys
 

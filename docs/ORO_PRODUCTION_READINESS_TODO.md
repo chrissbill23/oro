@@ -141,7 +141,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Verification: raw SQL tests under `oro_app` in `ConversationAccessTest`, in the style of
     `aUserCannotSendAsAnotherUser`
 
-- [ ] `ORO-SEC-003` — P0 — Stop sharing Umoja's signing secret: asymmetric tokens with an audience
+- [x] `ORO-SEC-003` — P0 — Stop sharing Umoja's signing secret: asymmetric tokens with an audience
+  - Done (2026-10-23): Umoja signs RS256 with its own RSA key (`config/security/JwtKeys.java`), names it by thumbprint and publishes the public keys on `/umoja/.well-known/jwks.json`; its tokens carry `aud: [umoja, oro]`. Oro reads them from `UMOJA_JWKS_URI`, accepts RS256 only and the audience `oro`, and holds no Umoja secret. No transition flag: the refresh tokens are opaque, so a client gets one 401 and a new RS256 token. Tested: `ApiTest.aTokenNeedsTheKeyAndTheAudienceOfItsProduct`, `JwkSetUriTest` (rotation without restart), Umoja's `JwtKeysTest` and `AuthApiIntegrationTest`.
   - Current state: Confirmed design risk
   - Evidence: `oro/backend/src/main/resources/application.yml` (`UMOJA_JWT_SECRET`),
     `SecurityConfig.userTokenManagers` (HS256 with the shared secret);
@@ -161,7 +162,7 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Verification: `ApiTest` with tokens signed by a test key pair: wrong key, wrong audience, unknown `kid`, rotation
 
 - [x] `ORO-SEC-004` — P0 — Tighten token validation: audience, subject, clock skew
-  - Done (2026-10-23): Partly: expiry required, 30 s of skew, not-before, subject in the form of an account id (`SecurityConfig.userTokenManagers`). The audience waits for `ORO-SEC-003`. Tested: `ApiTest.aTokenIsCheckedBeyondItsSignature`.
+  - Done (2026-10-23): expiry required, 30 s of skew, not-before, subject in the form of an account id, and the audience `oro` (with `ORO-SEC-003`). Tested: `ApiTest.aTokenIsCheckedBeyondItsSignature`, `aTokenNeedsTheKeyAndTheAudienceOfItsProduct`.
   - Current state: Partially implemented (HS256 only, issuer, expiry and signature are checked)
   - Evidence: `SecurityConfig.userTokenManagers` uses `JwtValidators.createDefaultWithIssuer` (60 s skew, no
     audience); `ActorResolver` accepts any non-null subject.

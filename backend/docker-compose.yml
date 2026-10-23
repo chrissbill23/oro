@@ -3,8 +3,8 @@
 #   docker compose -f ../../1_ASATA_DATABASE/docker-compose.yml up -d
 #   docker compose up --build
 #   docker compose --env-file .env.local up --build
-# Settings in .env.local (git ignored): the secrets of the products (UMOJA_JWT_SECRET: the one of the Umoja backend),
-# the integration keys, the port. API: http://localhost:8082/oro   Swagger UI: http://localhost:8082/oro/doc
+# Settings in .env.local (git ignored): the integration keys, the port. The tokens of the users are checked with the
+# public keys of their product (UMOJA_JWKS_URI): Oro holds no secret that could sign one. API: http://localhost:8082/oro   Swagger UI: http://localhost:8082/oro/doc
 name: oro
 
 services:
@@ -23,9 +23,10 @@ services:
       ORO_OUTBOX_ENABLED: ${ORO_OUTBOX_ENABLED:-true}
       # Swagger UI on /oro/doc: development only, set ORO_API_DOCS=false in production
       ORO_API_DOCS: ${ORO_API_DOCS:-true}
-      # the tokens of the users: each product's own secret (empty: that product's users cannot call Oro)
-      ORO_JWT_SECRET: ${ORO_JWT_SECRET:-}
-      UMOJA_JWT_SECRET: ${UMOJA_JWT_SECRET:-}
+      # the tokens of the users: the public keys of each product (empty: that product's users cannot call Oro); Oro
+      # holds no secret of theirs. Umoja's, on the shared network
+      UMOJA_JWKS_URI: ${UMOJA_JWKS_URI:-http://umoja:8080/umoja/.well-known/jwks.json}
+      ORO_JWKS_URI: ${ORO_JWKS_URI:-}
       # the keys of the trusted integrations of the products (/internal)
       ORO_INTEGRATION_KEY: ${ORO_INTEGRATION_KEY:-}
       UMOJA_INTEGRATION_KEY: ${UMOJA_INTEGRATION_KEY:-}

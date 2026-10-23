@@ -13,7 +13,13 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
+import com.nimbusds.jose.proc.JWSVerificationKeySelector;
+import com.nimbusds.jose.proc.SecurityContext;
+import com.nimbusds.jwt.proc.DefaultJWTProcessor;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.JwtClaimNames;
 import org.springframework.security.oauth2.jwt.JwtClaimValidator;
@@ -30,7 +36,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import jakarta.servlet.DispatcherType;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -101,30 +106,49 @@ public class SecurityConfig {
     static final Duration CLOCK_SKEW = Duration.ofSeconds(30);
 
     /**
-     * issuer -> the authentication of its tokens: HS256 with the secret of its product, its issuer, an expiry (past by
-     * 30 s at most) and a not-before (if any) reached, a subject in the form of an account id
+     * issuer -> the authentication of its tokens: RS256 only, with the public keys of its product (by the kid of the
+     * token), its issuer, oro among its audience, an expiry (past by 30 s at most) and a not-before (if any) reached, a
+     * subject in the form of an account id. Oro holds no key that could sign a token.
      */
     static Map<String, AuthenticationManager> userTokenManagers(SecurityProperties properties) {
         Map<String, AuthenticationManager> managers = new HashMap<>();
         properties.getProducts().forEach((product, trust) -> {
-            if (trust.getJwtSecret() == null || trust.getJwtSecret().isBlank()) {
-                log.warn("no JWT secret for {}: its users cannot call Oro", product);
+            boolean uri = trust.getJwkSetUri() != null && !trust.getJwkSetUri().isBlank();
+            boolean inline = trust.getJwkSet() != null && !trust.getJwkSet().isBlank();
+            if (!uri && !inline) {
+                log.warn("no public keys for {} (jwk-set-uri): its users cannot call Oro", product);
                 return;
             }
-            byte[] secret = trust.getJwtSecret().getBytes(StandardCharsets.UTF_8);
-            if (secret.length < 32 || trust.getIssuer() == null || trust.getIssuer().isBlank()) {
-                throw new IllegalStateException("oro.security.products." + product + ": an issuer and a jwt-secret of 32 bytes at least");
+            if (trust.getIssuer() == null || trust.getIssuer().isBlank() || trust.getAudience() == null || trust.getAudience().isBlank()) {
+                throw new IllegalStateException("oro.security.products." + product + ": an issuer and an audience");
             }
-            NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(new SecretKeySpec(secret, "HmacSHA256"))
-                    .macAlgorithm(MacAlgorithm.HS256).build();
+            NimbusJwtDecoder decoder = uri
+                    ? NimbusJwtDecoder.withJwkSetUri(trust.getJwkSetUri()).jwsAlgorithm(SignatureAlgorithm.RS256).build()
+                    : inlineDecoder(product, trust.getJwkSet());
             decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                     new JwtTimestampValidator(CLOCK_SKEW),
                     new JwtIssuerValidator(trust.getIssuer()),
                     new JwtClaimValidator<Instant>(JwtClaimNames.EXP, Objects::nonNull),
+                    new JwtClaimValidator<List<String>>(JwtClaimNames.AUD, audience -> audience != null && audience.contains(trust.getAudience())),
                     new JwtClaimValidator<String>(JwtClaimNames.SUB, subject -> subject != null && SUBJECT.matcher(subject).matches())));
             managers.put(trust.getIssuer(), new JwtAuthenticationProvider(decoder)::authenticate);
         });
         return managers;
+    }
+
+    /** the public keys given inline (never a private part: only the public ones are kept), RS256 only */
+    private static NimbusJwtDecoder inlineDecoder(Product product, String jwkSet) {
+        JWKSet keys;
+        try {
+            keys = JWKSet.parse(jwkSet).toPublicJWKSet();
+        } catch (java.text.ParseException e) {
+            throw new IllegalStateException("oro.security.products." + product + ".jwk-set: not a JWK set", e);
+        }
+        DefaultJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
+        processor.setJWSKeySelector(new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, new ImmutableJWKSet<>(keys)));
+        // the claims are the validators' to check
+        processor.setJWTClaimsSetVerifier((claims, context) -> { });
+        return new NimbusJwtDecoder(processor);
     }
 
     static Map<Product, byte[]> integrationKeys(SecurityProperties properties) {

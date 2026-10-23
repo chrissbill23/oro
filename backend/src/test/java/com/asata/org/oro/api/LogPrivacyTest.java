@@ -9,16 +9,13 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -33,18 +30,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(OutputCaptureExtension.class)
 class LogPrivacyTest extends PostgresIntegrationTest {
 
-    private static final String ORO_SECRET = "test-oro-jwt-secret-for-the-tests-only-0123456789";
-
     @Autowired
     private MockMvc mvc;
 
     private static String oro(String userId) {
-        NimbusJwtEncoder encoder = new NimbusJwtEncoder(new ImmutableSecret<>(new SecretKeySpec(
-                ORO_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256")));
-        Instant now = Instant.now();
-        JwtClaimsSet claims = JwtClaimsSet.builder().issuer("oro").subject(userId).issuedAt(now)
-                .expiresAt(now.plus(10, ChronoUnit.MINUTES)).build();
-        return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+        return com.asata.org.oro.TestTokens.oro(userId);
     }
 
     @Test

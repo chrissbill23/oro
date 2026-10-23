@@ -57,8 +57,8 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `UMOJA_JWT_SECRET` | none | Umoja's token secret: **the same as the Umoja backend's** (`umoja/backend/.env.local`). Unset: Umoja users cannot call Oro |
-| `ORO_JWT_SECRET` | none | The secret of Oro's own account system (to come). Unset: Oro users cannot call |
+| `UMOJA_JWKS_URI` | `http://umoja:8080/umoja/.well-known/jwks.json` (`http://localhost:8081/…` outside Docker) | Where Umoja publishes the public keys of its tokens. Empty: Umoja users cannot call Oro |
+| `ORO_JWKS_URI` | none | The public keys of Oro's own account system (to come). Empty: Oro users cannot call |
 | `UMOJA_INTEGRATION_KEY`, `ORO_INTEGRATION_KEY` | none | Keys of the trusted integrations (`/internal`); 32 characters at least (`openssl rand -hex 32`) |
 | `ORO_PORT` | `8082` | Port on the host (8080 Mokili, 8081 Umoja) |
 | `ORO_DB_USERNAME`, `ORO_DB_PASSWORD` | `oro_api`, `oro_api_dev` | The API's login (`NOINHERIT`, a member of `oro_app` only, never a superuser) and its password |
@@ -74,7 +74,7 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 
 ```bash
 SPRING_DATASOURCE_PASSWORD=oro_api_dev ORO_SYSTEM_DATASOURCE_PASSWORD=oro_worker_dev ORO_API_DOCS=true \
-  UMOJA_JWT_SECRET=... ./mvnw spring-boot:run    # localhost:5433/asata, port 8082
+  ./mvnw spring-boot:run    # localhost:5433/asata, port 8082; Umoja's keys from localhost:8081
 ```
 
 Never connect as a superuser: superusers bypass RLS. Local settings go in `src/main/resources/application-local.yml`,
@@ -99,12 +99,13 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction; the API's login never takes `oro_system`, and each context only on its own login; slow statements and long lock waits end |
 | `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention |
-| `ApiTest` | The HTTP chain with tokens really signed by each product: wrong secret, unknown issuer, expiry, no expiry, a subject that is not an account id, not-before, clock skew; no API description by default; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
+| `ApiTest` | The HTTP chain with tokens really signed by each product (RS256, `TestTokens`): another key (even under a published `kid`), the audience, HS256 with the former shared secret, unsigned tokens, unknown issuer, expiry, no expiry, a subject that is not an account id, not-before, clock skew; no API description by default; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
 | `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; a late snapshot never brings back a revoked access, and concurrent synchronizations end as the newest; the list (last message, the other one, unread); mute; rename; reactions (one emoji, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
 | `MessagingApiTest` | The same over HTTP: the synchronization by the Umoja integration only; list, reactions, search, mute, read positions, typing; a file uploaded (its name cleaned, its size limited), sent, then downloaded by the members only with safe headers |
 | `EmojisTest` | A reaction is one emoji whatever it is (skin tones, flags, ZWJ sequences); never text, digits, keycaps, a lone modifier nor several emojis |
 | `LiveHubTest` | The streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only; a stream ends with its token (30 minutes at most) with `reconnect`; closed by identity or organization, offline after |
 | `LiveAuthorizationTest` | Revocation, suspension and deactivation close the streams with their commit; the periodic check closes what changed elsewhere; a stream lasts as long as its token |
+| `JwkSetUriTest` | The public keys are read from where the product publishes them, at the first token then for a new `kid`: a rotation needs no restart; an unpublished key is refused |
 | `LogPrivacyTest` | A message refused by the database leaves its constraint in the logs, never its text nor the refused row |
 | `AttachmentTest` | Metadata is visible only to those who can read the message, even with the storage key; downloads need an uploaded and clean file; the API cannot mark a file clean; a sender can attach only their own uploads; a deleted message's files are hidden and marked for purge; file names cannot be paths |
 
@@ -115,9 +116,13 @@ carries an `x-request-id` header.
 
 ### Who may call
 
-- **Users** send `Authorization: Bearer <access token of their product>`. Each product signs its own tokens (HS256) with
-  its own secret and issuer (`oro`, `umoja`). Oro reads the issuer and checks the signature with that product's
-  secret, so a token from one product is never accepted as the other's. An unknown issuer, a bad signature, no expiry,
+- **Users** send `Authorization: Bearer <access token of their product>`. Each product signs its own tokens (RS256)
+  with its own private key, under its own issuer (`oro`, `umoja`), for the audience `oro` among others. Oro reads the
+  issuer and checks the signature with the public keys that product publishes (a JWK set: Umoja's
+  `/umoja/.well-known/jwks.json`, read at the first token and again for an unknown `kid`, so a rotation needs no
+  restart). Oro holds nothing that could sign a token, and a token from one product is never accepted as the other's.
+  Another algorithm (HS256, none), a key that product did not publish, a token without `oro` in its audience, an
+  unknown issuer, a bad signature, no expiry,
   an expiry past by more than 30 s, a not-before not reached yet, or a subject that is not an account id
   (`[A-Za-z0-9._:-]{1,128}`, never an email) gets 401.
   - The subject is the account's ID in its product (for Umoja, `asata_user.id`). Its messaging identity is created on
