@@ -15,6 +15,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -92,6 +93,12 @@ public class HttpExceptionHandler {
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorDTO> methodNotAllowed(HttpRequestMethodNotSupportedException e, HttpServletRequest request) {
         return error(request, HttpStatus.METHOD_NOT_ALLOWED, e.getMessage(), null);
+    }
+
+    /** the client left (a stream closed by the browser): nothing to answer, nothing wrong */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void clientGone(AsyncRequestNotUsableException e, HttpServletRequest request) {
+        log.debug("client gone on {}", request.getRequestURI());
     }
 
     @ExceptionHandler(Exception.class)

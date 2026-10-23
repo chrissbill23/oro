@@ -5,18 +5,17 @@ import com.asata.org.oro.enums.Product;
 import com.asata.org.oro.outbox.service.OutboxWriter;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.json.JsonMapper;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.util.*;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * The system messages of a conversation: what happened in it (a member joined, left, was removed; it was renamed), in
- * its order of messages, without a sender. Written as oro_system (oro_app sends only as its identity): from the call
- * on, the rest of the transaction acts as oro_system, so it comes last, once the changes of the user are flushed.
+ * its order of messages, without a sender. Posted by the database function oro_post_system_message, in the transaction
+ * of the change, as the user who made it (oro_app) or as the synchronization (oro_system): the function writes only a
+ * system message, builds it from the rows, and refuses an event that did not happen. The API never takes oro_system.
  * <p>
  * The body is the event (a fallback); the metadata says who: {@code {"event": "member.joined", "userId": "<user id in
  * the product>", "byUserId": ...}} or {@code {"event": "conversation.renamed", "name": ...}}. The clients write the
@@ -33,54 +32,31 @@ public class SystemMessages {
 
     private final DbSession session;
     private final EntityManager em;
-    private final JdbcTemplate jdbc;
     private final OutboxWriter outbox;
-    private final JsonMapper json;
 
-    /** a member event: who (and who did it, when it is someone else) */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void member(UUID conversationId, Product product, String event, UUID memberId, UUID byId) {
-        enter();
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("event", event);
-        metadata.put("userId", externalId(memberId));
-        if (byId != null && !byId.equals(memberId)) {
-            metadata.put("byUserId", externalId(byId));
+    /** a member event, after the change of the membership (who did it comes from the rows) */
+    public void member(UUID conversationId, Product product, String event, UUID memberId) {
+        post(conversationId, product, event, memberId);
+    }
+
+    /** the new name of a group, after the change, by the current user */
+    public void renamed(UUID conversationId, Product product) {
+        post(conversationId, product, RENAMED, null);
+    }
+
+    private void post(UUID conversationId, Product product, String event, UUID memberId) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("a system message is posted in the transaction of its change");
         }
-        post(conversationId, product, event, metadata);
-    }
-
-    /** the new name of a group, and who gave it */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void renamed(UUID conversationId, Product product, String name, UUID byId) {
-        enter();
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("event", RENAMED);
-        metadata.put("name", name);
-        metadata.put("byUserId", externalId(byId));
-        post(conversationId, product, RENAMED, metadata);
-    }
-
-    private void enter() {
-        // the changes of the user first, under its own role
-        em.flush();
-        session.enterSystem();
-    }
-
-    private void post(UUID conversationId, Product product, String body, Map<String, Object> metadata) {
-        Long seq = jdbc.queryForObject(
-                "UPDATE oro_conversation SET last_message_seq = last_message_seq + 1 WHERE id = ? RETURNING last_message_seq",
-                Long.class, conversationId);
-        UUID messageId = UUID.randomUUID();
-        jdbc.update("""
-                INSERT INTO oro_message(id, conversation_id, product_id, seq, message_type, body, metadata, created_at)
-                VALUES (?, ?, ?, ?, 'system', ?, ?::jsonb, now())""",
-                messageId, conversationId, product.code(), seq, body, json.writeValueAsString(metadata));
+        if (!session.inSystemTransaction()) {
+            // the changes of the user first: the function reads them
+            em.flush();
+        }
+        Map<String, Object> posted = session.jdbc().queryForMap(
+                "SELECT message_id, message_seq FROM oro_post_system_message(?, ?, ?)", conversationId, event, memberId);
+        UUID messageId = (UUID) posted.get("message_id");
+        long seq = ((Number) posted.get("message_seq")).longValue();
         outbox.add(product, "message.created", "message", messageId,
                 Map.of("conversationId", conversationId, "messageId", messageId, "seq", seq));
-    }
-
-    private String externalId(UUID identityId) {
-        return jdbc.queryForObject("SELECT external_user_id FROM oro_messaging_identity WHERE id = ?", String.class, identityId);
     }
 }

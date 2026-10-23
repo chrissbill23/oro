@@ -90,7 +90,37 @@ class ApiTest extends PostgresIntegrationTest {
                 .andExpect(status().isUnauthorized());
         call(get("/conversations"), "not-a-token", null, null).andExpect(status().isUnauthorized());
         assertNoIdentity();
-        call(get("/doc/api"), null, null, null).andExpect(status().isOk());
+        // no API description unless ORO_API_DOCS=true
+        call(get("/doc/api"), null, null, null).andExpect(status().isNotFound());
+    }
+
+    /** a token of the right product and signature is still refused without an expiry, with a bad subject, too early or late */
+    @Test
+    void aTokenIsCheckedBeyondItsSignature() throws Exception {
+        JwtEncoder encoder = new NimbusJwtEncoder(new ImmutableSecret<>(new SecretKeySpec(
+                ORO_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256")));
+        java.util.function.Function<JwtClaimsSet.Builder, String> sign = claims -> encoder.encode(
+                JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims.build())).getTokenValue();
+        Instant now = Instant.now();
+
+        // no expiry
+        call(get("/me"), sign.apply(JwtClaimsSet.builder().issuer("oro").subject("oro-amani").issuedAt(now)), null, null)
+                .andExpect(status().isUnauthorized());
+        // an email, a path, nothing: not an account id
+        for (String subject : java.util.List.of("amani@example.com", "../amani", " ")) {
+            call(get("/me"), sign.apply(JwtClaimsSet.builder().issuer("oro").subject(subject).issuedAt(now)
+                    .expiresAt(now.plusSeconds(600))), null, null).andExpect(status().isUnauthorized());
+        }
+        // not valid before a minute from now
+        call(get("/me"), sign.apply(JwtClaimsSet.builder().issuer("oro").subject("oro-amani").issuedAt(now)
+                .notBefore(now.plusSeconds(60)).expiresAt(now.plusSeconds(600))), null, null)
+                .andExpect(status().isUnauthorized());
+        // expired 45 s ago: past the 30 s of clock skew; 10 s ago: within it
+        call(get("/me"), token("oro", ORO_SECRET, "oro-amani", now.minusSeconds(45)), null, null)
+                .andExpect(status().isUnauthorized());
+        assertNoIdentity();
+        call(get("/me"), token("oro", ORO_SECRET, "oro-amani", now.minusSeconds(10)), null, null)
+                .andExpect(status().isOk());
     }
 
     private void assertNoIdentity() {

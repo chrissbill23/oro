@@ -2,23 +2,21 @@ package com.asata.org.oro.outbox.service;
 
 import com.asata.org.oro.enums.CodedEnum;
 import com.asata.org.oro.enums.Product;
-import com.asata.org.oro.outbox.entity.OutboxEvent;
-import jakarta.persistence.EntityManager;
+import com.asata.org.oro.context.DbSession;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Adds an event to the outbox in the transaction of its change (MANDATORY: never alone), so that the event is
- * committed with the change or not at all. The payload holds ids, numbers and codes only: no message content, which
- * the consumers read through an authorized path.
+ * Adds an event to the outbox in the transaction of its change (never alone), so that the event is committed with the
+ * change or not at all: the transaction of a user (oro_app, the API's login) or of the system (oro_system, the
+ * worker's login), with the connection of that transaction. The payload holds ids, numbers and codes only: no message
+ * content, which the consumers read through an authorized path.
  */
 @Component
 @RequiredArgsConstructor
@@ -26,21 +24,19 @@ public class OutboxWriter {
 
     private static final Pattern KEY = Pattern.compile("[A-Za-z]{1,64}");
 
-    private final EntityManager em;
+    private final DbSession session;
 
-    @Transactional(propagation = Propagation.MANDATORY)
     public UUID add(Product product, String eventType, String aggregateType, UUID aggregateId, Map<String, ?> payload) {
-        OutboxEvent event = new OutboxEvent();
-        event.setId(UUID.randomUUID());
-        event.setProduct(product);
-        event.setEventType(eventType);
-        event.setAggregateType(aggregateType);
-        event.setAggregateId(aggregateId);
-        event.setPayload(toJson(payload));
-        event.setCreatedAt(OffsetDateTime.now());
-        // persist, never save(): the API may insert into the outbox but not read it
-        em.persist(event);
-        return event.getId();
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("an outbox event is added in the transaction of its change");
+        }
+        UUID id = UUID.randomUUID();
+        // an insert only: the API may add to the outbox but not read it
+        session.jdbc().update("""
+                INSERT INTO oro_outbox_event(id, product_id, event_type, aggregate_type, aggregate_id, payload)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb)""",
+                id, product.code(), eventType, aggregateType, aggregateId, toJson(payload));
+        return id;
     }
 
     static String toJson(Map<String, ?> payload) {

@@ -40,6 +40,60 @@ class RlsContextTest extends PostgresIntegrationTest {
                        current_setting('oro.identity_id', true) AS identity, pg_backend_pid() AS pid"""));
     }
 
+    /** whatever runs on the API's connections (an injection included) cannot become oro_system */
+    @Test
+    void theApiLoginNeverTakesTheSystemRole() {
+        assertRefused(() -> tx.execute(status -> jdbc.queryForObject(
+                "SELECT set_config('role', 'oro_system', true)", String.class)), "permission denied");
+        assertRefused(() -> tx.execute(status -> {
+            jdbc.execute("SET LOCAL ROLE oro_system");
+            return null;
+        }), "permission denied");
+        assertRefused(() -> session.systemTransaction().execute(status -> {
+            session.jdbc().execute("SET LOCAL ROLE oro_app");
+            return null;
+        }), "permission denied");
+        // each context on its own login only
+        assertRefused(() -> tx.execute(status -> {
+            session.enterSystem();
+            return null;
+        }), "the database context of the system is set inside its own transaction only");
+        assertRefused(() -> session.systemTransaction().execute(status -> {
+            session.enterUser(amaniActor);
+            return null;
+        }), "the database context of a user is set inside its own transaction only");
+        String logins = session.systemTransaction().execute(status -> {
+            session.enterSystem();
+            return session.jdbc().queryForObject("SELECT session_user || '/' || current_user", String.class);
+        });
+        assertThat(logins).isEqualTo("oro_worker/oro_system");
+    }
+
+    /** a user's transaction is bounded by the server: a slow statement and a long wait for a lock end (test: 2 s, 1 s) */
+    @Test
+    void aUserTransactionIsBoundedInTime() {
+        assertRefused(() -> asUser(amaniActor, jdbc -> jdbc.queryForObject("SELECT pg_sleep(5)::text", String.class)),
+                "statement timeout");
+        UUID conversationId = admin.queryForObject("SELECT id FROM oro_conversation WHERE product_id = 'ORO'", UUID.class);
+        // the superuser holds the conversation's row; the user's send-like lock waits, then gives up
+        java.util.concurrent.CompletableFuture<Void> holder = java.util.concurrent.CompletableFuture.runAsync(() ->
+                admin.execute("BEGIN; SELECT 1 FROM oro_conversation WHERE id = '%s' FOR UPDATE; SELECT pg_sleep(3); COMMIT;"
+                        .formatted(conversationId)));
+        try {
+            Thread.sleep(300);
+            assertRefused(() -> asUser(amaniActor, jdbc -> jdbc.queryForObject(
+                    "SELECT id FROM oro_conversation WHERE id = ? FOR NO KEY UPDATE", UUID.class, conversationId)),
+                    "lock timeout");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            holder.join();
+        }
+        String settings = asUser(amaniActor, jdbc -> jdbc.queryForObject(
+                "SELECT current_setting('statement_timeout') || ' ' || current_setting('idle_in_transaction_session_timeout')", String.class));
+        assertThat(settings).isEqualTo("2s 30s");
+    }
+
     @Test
     void aTransactionWithoutContextHasNoRight() {
         assertRefused(() -> tx.execute(status -> jdbc.queryForObject("SELECT count(*) FROM oro_conversation", Long.class)),
@@ -68,7 +122,7 @@ class RlsContextTest extends PostgresIntegrationTest {
             }
             Map<String, Object> next = connectionState();
             nextPids.add((Integer) next.get("pid"));
-            assertThat(next.get("role")).isEqualTo("oro_service");
+            assertThat(next.get("role")).isEqualTo("oro_api");
             assertThat((String) next.get("product")).isNullOrEmpty();
             assertThat((String) next.get("identity")).isNullOrEmpty();
         }

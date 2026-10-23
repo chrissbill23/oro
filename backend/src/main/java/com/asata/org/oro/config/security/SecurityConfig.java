@@ -14,7 +14,11 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
-import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.JwtClaimNames;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationProvider;
 import org.springframework.security.oauth2.server.resource.authentication.JwtIssuerAuthenticationManagerResolver;
@@ -28,10 +32,14 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
 import jakarta.servlet.DispatcherType;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.regex.Pattern;
 
 /**
  * Two stateless doors: /internal for the trusted integrations of the products (their keys), everything else for the
@@ -87,7 +95,15 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, e) -> exceptionResolver.resolveException(request, response, null, e)));
     }
 
-    /** issuer -> the authentication of its tokens: HS256 with the secret of its product, its issuer, not expired */
+    /** the form of an account id in its product (the external id of oro_messaging_identity): never an email */
+    static final Pattern SUBJECT = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
+    /** the clocks of the products and Oro may differ this much */
+    static final Duration CLOCK_SKEW = Duration.ofSeconds(30);
+
+    /**
+     * issuer -> the authentication of its tokens: HS256 with the secret of its product, its issuer, an expiry (past by
+     * 30 s at most) and a not-before (if any) reached, a subject in the form of an account id
+     */
     static Map<String, AuthenticationManager> userTokenManagers(SecurityProperties properties) {
         Map<String, AuthenticationManager> managers = new HashMap<>();
         properties.getProducts().forEach((product, trust) -> {
@@ -101,7 +117,11 @@ public class SecurityConfig {
             }
             NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(new SecretKeySpec(secret, "HmacSHA256"))
                     .macAlgorithm(MacAlgorithm.HS256).build();
-            decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(trust.getIssuer()));
+            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                    new JwtTimestampValidator(CLOCK_SKEW),
+                    new JwtIssuerValidator(trust.getIssuer()),
+                    new JwtClaimValidator<Instant>(JwtClaimNames.EXP, Objects::nonNull),
+                    new JwtClaimValidator<String>(JwtClaimNames.SUB, subject -> subject != null && SUBJECT.matcher(subject).matches())));
             managers.put(trust.getIssuer(), new JwtAuthenticationProvider(decoder)::authenticate);
         });
         return managers;

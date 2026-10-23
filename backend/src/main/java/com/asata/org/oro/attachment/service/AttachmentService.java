@@ -15,7 +15,6 @@ import com.asata.org.oro.message.repository.MessageRepository;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,7 +34,6 @@ public class AttachmentService {
 
     private final DbSession session;
     private final EntityManager em;
-    private final JdbcTemplate jdbc;
     private final ConversationAccess access;
     private final AttachmentRepository attachments;
     private final MessageRepository messages;
@@ -94,22 +92,22 @@ public class AttachmentService {
     }
 
     /** oro_system: the object is in the storage, with its real size and checksum (checked by the storage callback) */
-    @Transactional
+    @Transactional(transactionManager = DbSession.SYSTEM_TRANSACTION_MANAGER)
     public void markUploaded(UUID attachmentId, long sizeBytes, String checksumSha256) {
         session.enterSystem();
-        requireUpdated(jdbc.update("""
+        requireUpdated(session.jdbc().update("""
                 UPDATE oro_attachment SET upload_status = 'uploaded', size_bytes = ?, checksum_sha256 = ?
                 WHERE id = ? AND upload_status = 'pending'""", sizeBytes, checksumSha256, attachmentId));
     }
 
     /** oro_system: the result of the malware scan of an uploaded object */
-    @Transactional
+    @Transactional(transactionManager = DbSession.SYSTEM_TRANSACTION_MANAGER)
     public void recordScan(UUID attachmentId, ScanStatus result) {
         if (result == ScanStatus.PENDING) {
             throw new IllegalArgumentException("A scan has a result");
         }
         session.enterSystem();
-        requireUpdated(jdbc.update("""
+        requireUpdated(session.jdbc().update("""
                 UPDATE oro_attachment SET scan_status = ?, scanned_at = now()
                 WHERE id = ? AND upload_status = 'uploaded'""", result.code(), attachmentId));
     }

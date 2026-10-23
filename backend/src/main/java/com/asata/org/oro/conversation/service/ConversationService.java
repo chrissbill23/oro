@@ -136,7 +136,7 @@ public class ConversationService {
         ConversationMember member = addMemberRow(group, identityId, MemberRole.MEMBER, shareHistory, actor.identityId());
         outbox.add(actor.product(), "member.added", "conversation", group.getId(),
                 Map.of("conversationId", group.getId(), "memberId", identityId, "addedBy", actor.identityId()));
-        systemMessages.member(group.getId(), actor.product(), SystemMessages.JOINED, identityId, actor.identityId());
+        systemMessages.member(group.getId(), actor.product(), SystemMessages.JOINED, identityId);
         return member;
     }
 
@@ -157,7 +157,7 @@ public class ConversationService {
         end(mine, LeftReason.LEFT);
         outbox.add(actor.product(), "member.left", "conversation", group.getId(),
                 Map.of("conversationId", group.getId(), "memberId", actor.identityId()));
-        systemMessages.member(group.getId(), actor.product(), SystemMessages.LEFT, actor.identityId(), null);
+        systemMessages.member(group.getId(), actor.product(), SystemMessages.LEFT, actor.identityId());
     }
 
     /** removes a member of a group, by the owner or an admin; the owner cannot be removed, an admin only by the owner */
@@ -178,7 +178,7 @@ public class ConversationService {
         end(member, LeftReason.REMOVED);
         outbox.add(actor.product(), "member.removed", "conversation", group.getId(),
                 Map.of("conversationId", group.getId(), "memberId", identityId, "removedBy", actor.identityId()));
-        systemMessages.member(group.getId(), actor.product(), SystemMessages.REMOVED, identityId, actor.identityId());
+        systemMessages.member(group.getId(), actor.product(), SystemMessages.REMOVED, identityId);
     }
 
     /** a conversation the actor is an active member of */
@@ -265,7 +265,7 @@ public class ConversationService {
         outbox.add(actor.product(), "conversation.updated", "conversation", group.getId(),
                 Map.of("conversationId", group.getId(), "updatedBy", actor.identityId()));
         if (renamed) {
-            systemMessages.renamed(group.getId(), actor.product(), newName, actor.identityId());
+            systemMessages.renamed(group.getId(), actor.product());
         }
         return group;
     }

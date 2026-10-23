@@ -40,8 +40,9 @@ docker exec -i asata-postgres-1 sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USE
 docker exec -i asata-postgres-1 sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d asata' < oro/INSERT.sql   # development only
 ```
 
-`oro/INSERT.sql` creates the development login `oro_service`, whose password is the placeholder `oro_service_dev`. A
-deployment creates its own logins, with secrets from its vault, and never runs the seed.
+`oro/INSERT.sql` creates the two development logins, with placeholder passwords: `oro_api` (`oro_api_dev`) for the
+API and `oro_worker` (`oro_worker_dev`) for the integrations and workers. A deployment creates its own logins, with
+secrets from its vault, and never runs the seed.
 
 ### Backend with Docker
 
@@ -50,9 +51,9 @@ docker compose -f ../../1_ASATA_DATABASE/docker-compose.yml up -d    # the share
 cd .. && docker compose up --build                                   # reads backend/.env.local
 ```
 
-API: http://localhost:8082/oro, Swagger UI: http://localhost:8082/oro/doc. The container joins the shared database on
-the Docker network `asataDB` (`asata-postgres:5432`) and logs in as `oro_service`. Settings go in `backend/.env.local`,
-which git ignores:
+API: http://localhost:8082/oro, Swagger UI: http://localhost:8082/oro/doc (on in this compose file only). The port is
+published on `127.0.0.1` only. The container joins the shared database on the Docker network `asataDB`
+(`asata-postgres:5432`) with its two logins. Settings go in `backend/.env.local`, which git ignores:
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -60,7 +61,9 @@ which git ignores:
 | `ORO_JWT_SECRET` | none | The secret of Oro's own account system (to come). Unset: Oro users cannot call |
 | `UMOJA_INTEGRATION_KEY`, `ORO_INTEGRATION_KEY` | none | Keys of the trusted integrations (`/internal`); 32 characters at least (`openssl rand -hex 32`) |
 | `ORO_PORT` | `8082` | Port on the host (8080 Mokili, 8081 Umoja) |
-| `ORO_DB_USERNAME`, `ORO_DB_PASSWORD` | `oro_service`, `oro_service_dev` | Login role (`NOINHERIT`, never a superuser) and its password |
+| `ORO_DB_USERNAME`, `ORO_DB_PASSWORD` | `oro_api`, `oro_api_dev` | The API's login (`NOINHERIT`, a member of `oro_app` only, never a superuser) and its password |
+| `ORO_WORKER_DB_USERNAME`, `ORO_WORKER_DB_PASSWORD` | `oro_worker`, `oro_worker_dev` | The worker's login (`NOINHERIT`, a member of `oro_system` only) and its password |
+| `ORO_API_DOCS` | `true` here, `false` in `application.yml` | Swagger UI and the OpenAPI description; off in production |
 | `ORO_OUTBOX_ENABLED` | `true` | Runs the outbox worker |
 | `ORO_STORAGE_PROVIDER` | `local` | Where the files of the attachments go: `local` (a disk, `ORO_ATTACHMENTS_DIR`); another provider needs its `FileStorage`, until then nothing can be uploaded |
 | `ORO_ATTACHMENTS_DIR` | `./data/attachments` (`/data/attachments` in Docker, a volume) | The directory of the local storage |
@@ -70,7 +73,8 @@ which git ignores:
 ### Backend locally
 
 ```bash
-SPRING_DATASOURCE_PASSWORD=oro_service_dev UMOJA_JWT_SECRET=... ./mvnw spring-boot:run    # localhost:5433/asata, port 8082
+SPRING_DATASOURCE_PASSWORD=oro_api_dev ORO_SYSTEM_DATASOURCE_PASSWORD=oro_worker_dev ORO_API_DOCS=true \
+  UMOJA_JWT_SECRET=... ./mvnw spring-boot:run    # localhost:5433/asata, port 8082
 ```
 
 Never connect as a superuser: superusers bypass RLS. Local settings go in `src/main/resources/application-local.yml`,
@@ -89,17 +93,19 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 
 | Test class | What it proves |
 |---|---|
-| `SchemaScriptTest` | The script runs again on an existing database; RLS is on every table, owned by `oro_owner`; `oro_app` cannot bypass RLS or read the organization accesses or the outbox; the seed loads both products and every context, and runs twice without duplicates |
+| `SchemaScriptTest` | The script runs again on an existing database; RLS is on every table, owned by `oro_owner`; `oro_app` cannot bypass RLS or read the organization accesses or the outbox; the API's login is a member of `oro_app` only, the worker's of `oro_system` only; the seed loads both products and every context, and runs twice without duplicates |
 | `ProductIsolationTest` | The same external user ID in both products gives two identities; an Oro identity cannot join a Umoja conversation, and the reverse; no creator or direct pair from another product; an invalid organization context is rejected; organization members need an organization access |
-| `ConversationAccessTest` | Non-members and other organizations read nothing, through the services and through raw SQL; leaving, removal, revoked access and deactivation end access; members cannot rejoin on their own; the admin's choice of history is applied; concurrent creation of the same direct conversation gives one; one direct conversation per pair and organization; unread counts |
+| `ConversationAccessTest` | Non-members and other organizations read nothing, through the services and through raw SQL; leaving, removal, revoked access and deactivation end access; members cannot rejoin on their own; the admin's choice of history is applied; concurrent creation of the same direct conversation gives one; one direct conversation per pair and organization; unread counts; the roles hold in the database (raw SQL as a plain member or an admin); system messages tell only what happened, as who did it |
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
-| `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction |
+| `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction; the API's login never takes `oro_system`, and each context only on its own login; slow statements and long lock waits end |
 | `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention |
-| `ApiTest` | The HTTP chain with tokens really signed by each product: wrong secret, unknown issuer, expiry; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
-| `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; the list (last message, the other one, unread); mute; rename; reactions (one emoji, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
+| `ApiTest` | The HTTP chain with tokens really signed by each product: wrong secret, unknown issuer, expiry, no expiry, a subject that is not an account id, not-before, clock skew; no API description by default; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
+| `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; a late snapshot never brings back a revoked access, and concurrent synchronizations end as the newest; the list (last message, the other one, unread); mute; rename; reactions (one emoji, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
 | `MessagingApiTest` | The same over HTTP: the synchronization by the Umoja integration only; list, reactions, search, mute, read positions, typing; a file uploaded (its name cleaned, its size limited), sent, then downloaded by the members only with safe headers |
 | `EmojisTest` | A reaction is one emoji whatever it is (skin tones, flags, ZWJ sequences); never text, digits, keycaps, a lone modifier nor several emojis |
-| `LiveHubTest` | The streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only |
+| `LiveHubTest` | The streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only; a stream ends with its token (30 minutes at most) with `reconnect`; closed by identity or organization, offline after |
+| `LiveAuthorizationTest` | Revocation, suspension and deactivation close the streams with their commit; the periodic check closes what changed elsewhere; a stream lasts as long as its token |
+| `LogPrivacyTest` | A message refused by the database leaves its constraint in the logs, never its text nor the refused row |
 | `AttachmentTest` | Metadata is visible only to those who can read the message, even with the storage key; downloads need an uploaded and clean file; the API cannot mark a file clean; a sender can attach only their own uploads; a deleted message's files are hidden and marked for purge; file names cannot be paths |
 
 ## API
@@ -111,8 +117,9 @@ carries an `x-request-id` header.
 
 - **Users** send `Authorization: Bearer <access token of their product>`. Each product signs its own tokens (HS256) with
   its own secret and issuer (`oro`, `umoja`). Oro reads the issuer and checks the signature with that product's
-  secret, so a token from one product is never accepted as the other's. An unknown issuer, a bad signature or an expired
-  token gets 401.
+  secret, so a token from one product is never accepted as the other's. An unknown issuer, a bad signature, no expiry,
+  an expiry past by more than 30 s, a not-before not reached yet, or a subject that is not an account id
+  (`[A-Za-z0-9._:-]{1,128}`, never an email) gets 401.
   - The subject is the account's ID in its product (for Umoja, `asata_user.id`). Its messaging identity is created on
     its first request: a valid product token proves the account exists.
   - Suspended or deactivated identities get 403.
@@ -120,7 +127,8 @@ carries an `x-request-id` header.
   only picks one of the user's current accesses (fed by Umoja); it never grants one. A missing header gets 400, an
   organization without access gets 403. Oro requests must not send the header.
 - **Trusted integrations** call `/internal` with `x-integration-key`. A key acts for its own product only, and user
-  tokens are refused there.
+  tokens are refused there. `/internal` is for the private network only: a product's proxy never forwards it (Umoja's
+  nginx answers 404).
 - Clients name other users by their **user ID in their product** (`userId`), never by Oro's internal IDs.
 - Anything outside the caller's reach answers 404, never 403, so an ID reveals nothing.
 
@@ -129,7 +137,7 @@ carries an `x-request-id` header.
 | Route | What |
 |---|---|
 | `GET /ping`, `GET /actuator/health` | Status, public |
-| `GET /doc`, `GET /doc/api` | Swagger UI, OpenAPI |
+| `GET /doc`, `GET /doc/api` | Swagger UI, OpenAPI (only with `ORO_API_DOCS=true`) |
 | `GET /me` | The caller: identity, product, user ID, organization |
 | `GET /conversations` | The caller's active conversations in its context, latest first, with unread counts |
 | `POST /conversations/direct` `{userId}` | The direct conversation with a user (created the first time; concurrent calls give one) |
@@ -154,7 +162,7 @@ carries an `x-request-id` header.
 | `PUT /internal/identities/{userId}` | Integration: provisions an identity |
 | `POST /internal/identities/{userId}/suspend`, `/reactivate`, `/deactivate` | Integration: changes an identity's status |
 | `PUT`, `DELETE /internal/organizations/{organizationId}/members/{userId}` | Umoja integration: grants or revokes an organization access |
-| `PUT /internal/organizations/{organizationId}` `{memberUserIds, teams: [{teamId, name, memberUserIds}]}` | Umoja integration: the organization as it is now (see [Team chats](#team-chats-and-the-umoja-synchronization)) |
+| `PUT /internal/organizations/{organizationId}` `{version, memberUserIds, teams: [{teamId, name, memberUserIds}]}` | Umoja integration: the organization as it is now (see [Team chats](#team-chats-and-the-umoja-synchronization)) |
 
 ```bash
 # Umoja: Jordan's conversations in Acme (a token from the Umoja backend's login)
@@ -175,14 +183,20 @@ transaction (`OrganizationSyncService`):
   team's and read its whole history. A member who joins or leaves it is told by a system message (not the founders);
 - the chat of a team that is gone keeps its history and loses its members.
 
-Only `oro_system` may write `team_id` (oro_app has a column-level INSERT grant without it), and the API refuses to add,
-remove, rename or leave a team chat: the team decides. The synchronization is idempotent: Umoja sends it after every
-change of its memberships and teams, when a user opens the messages, and every 10 minutes.
+Only `oro_system` may write `team_id` (oro_app has a column-level INSERT grant without it), and the API and the
+database refuse to add, remove, rename or leave a team chat: the team decides. The synchronization is idempotent: Umoja
+sends it after every change of its memberships and teams, when a user opens the messages, and every 10 minutes.
+
+Each snapshot carries a `version`: when Umoja read it (microseconds since the epoch), Umoja reading and sending one
+organization at a time. Oro updates the organization's row in `oro_organization_sync` first, so the synchronizations of
+one organization run one after the other, and a snapshot older than the last one applied changes nothing (`applied:
+false`). A snapshot read before a revocation and arriving after it never gives the access back.
 
 ## Live: the stream of each user
 
-`GET /stream` keeps a Server-Sent Events stream open (30 minutes, then the client opens another; a comment every 25 s
-keeps the proxies from closing it). The browser reads it with `fetch`, so that it carries the token. Its events are
+`GET /stream` keeps a Server-Sent Events stream open as long as the token that opened it (30 minutes at most), then
+sends `reconnect` and ends: the client opens another with a new token. A comment every 25 s keeps the proxies from
+closing it. The browser reads it with `fetch`, so that it carries the token. Its events are
 ids and numbers only; the client reads what changed through the API:
 
 | Event | When |
@@ -193,6 +207,11 @@ ids and numbers only; the client reads what changed through the API:
 | `conversation {change; conversationId}` | Created, renamed, a member added or gone (the one who left hears it too) |
 | `typing {conversationId, userId}` | At once, for the other members; lasts a few seconds |
 | `read {conversationId, userId, seq}` | At once, for the members ("Seen") |
+| `reconnect` | The token of the stream expired: open a new stream with a new token |
+
+A stream is as good as a new request (`LiveAuthorization`): it is closed with the commit that suspends or deactivates
+its identity or revokes its organization access, and a check every 30 s closes any stream whose identity is no longer
+active or whose access is no longer current, whatever changed them. Its user is then offline for the others.
 
 The streams and the presence live in the memory of the instance (`LiveHub`): several instances need a shared bus
 (PostgreSQL `LISTEN/NOTIFY`, Redis) for the events and the presence.
@@ -458,11 +477,18 @@ another `OutboxEventHandler`.
 | `oro_owner` | no | bypassed (owner, RLS not forced) | owns the tables and the `SECURITY DEFINER` functions; never used to connect |
 | `oro_app` | no | **enforced** | the API: reads its product's rows and the current identity's; may update only a few columns (column grants); no access to `oro_organization_access`; insert-only on the outbox |
 | `oro_system` | no | own `USING (true)` policies | integrations and workers: identity provisioning, organization access, outbox, attachment checks, limited by grants |
-| `oro_service` (dev) | yes, `NOINHERIT` | n/a | member of both roles, with no rights of its own |
+| `oro_api` (dev) | yes, `NOINHERIT` | n/a | the API's login: member of `oro_app` only, no rights of its own |
+| `oro_worker` (dev) | yes, `NOINHERIT` | n/a | the worker's login: member of `oro_system` only, no rights of its own |
 | superusers | yes | **bypassed** | scripts and seeds only, never the backend |
 
-Each transaction starts with `DbSession.enterUser(actor)`, which runs `SET LOCAL ROLE oro_app` and
-`set_config('oro.product_id' / 'oro.identity_id', …, true)`.
+Two logins, two pools (`DataSourceConfig`). The API's login serves the users' requests, JPA included; it can never take
+`oro_system`, whatever a request makes it run, an injection included. The worker's login serves the integrations and
+the workers, in transactions of `systemTransactionManager`. Each user transaction starts with
+`DbSession.enterUser(actor)`, which runs `SET LOCAL ROLE oro_app` and `set_config('oro.product_id' /
+'oro.identity_id', …, true)`; `DbSession.enterSystem()` works only in a system transaction, on the worker's login.
+
+- **Bounded**: each context also sets `statement_timeout` (10 s for users, 60 s for the system), `lock_timeout` (5 s,
+  10 s) and `idle_in_transaction_session_timeout` (30 s, 60 s) for its transaction (`oro.database.*`).
 
 - **Transaction-local**: both settings reset at commit or rollback, so a pooled connection carries nothing over to the
   next transaction (tested).
@@ -477,12 +503,18 @@ Each transaction starts with `DbSession.enterUser(actor)`, which runs `SET LOCAL
   - inserts only with `sender_id` / `created_by` / `uploaded_by` equal to the current identity.
 - **Membership checks** use `SECURITY DEFINER` functions (`oro_member_history_from`, `oro_can_add_member`), because a
   policy cannot read its own table without recursion.
+- **Roles in the database too**: for a user, the triggers let only the owner and the admins add members (as members),
+  remove members (never the owner, an admin only by the owner) and rename a group; only the owner changes roles; a
+  member changes only its own positions and mute, and leaves only a group that is not a team chat.
+- **System messages** ("joined", "left", "removed", "renamed") are posted by `oro_post_system_message`, a
+  `SECURITY DEFINER` function: it writes only a system message, builds it from the rows, and refuses an event that did
+  not happen or was not done by the caller. The API never takes `oro_system` to post them.
 
 RLS is defense in depth. The services check product, organization, membership and role first, and answer `NotFound`
 for anything not visible.
 
-A deployment that separates the API from the workers should give the API's login only `oro_app`. With one shared login
-(`oro_service`), SQL injection in the API could `SET ROLE oro_system`.
+The identity in the context is a setting, which any SQL on the connection could change: the triggers protect against
+a bug in the services, the separate logins against an injection.
 
 ### Indexes and query patterns
 

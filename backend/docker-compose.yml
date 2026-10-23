@@ -1,5 +1,5 @@
 # Oro backend (messaging). The database is the one shared by the services of Asata
-# (../../1_ASATA_DATABASE/docker-compose.yml), with the Oro tables and the login oro_service: start it first.
+# (../../1_ASATA_DATABASE/docker-compose.yml), with the Oro tables and the logins oro_api and oro_worker: start it first.
 #   docker compose -f ../../1_ASATA_DATABASE/docker-compose.yml up -d
 #   docker compose up --build
 #   docker compose --env-file .env.local up --build
@@ -13,11 +13,16 @@ services:
     environment:
       # the shared database, on the network asataDB
       SPRING_DATASOURCE_URL: jdbc:postgresql://asata-postgres:5432/asata
-      # never a superuser (it bypasses row-level security): the NOINHERIT login of oro/INSERT.sql, whose development
-      # password is the placeholder oro_service_dev; set ORO_DB_PASSWORD for any other database
-      SPRING_DATASOURCE_USERNAME: ${ORO_DB_USERNAME:-oro_service}
-      SPRING_DATASOURCE_PASSWORD: ${ORO_DB_PASSWORD:-oro_service_dev}
+      # never a superuser (it bypasses row-level security): the NOINHERIT logins of oro/INSERT.sql, whose development
+      # passwords are placeholders; set ORO_DB_PASSWORD and ORO_WORKER_DB_PASSWORD for any other database.
+      # The API's login (oro_app only) serves the users; the worker's (oro_system only) the integrations and workers.
+      SPRING_DATASOURCE_USERNAME: ${ORO_DB_USERNAME:-oro_api}
+      SPRING_DATASOURCE_PASSWORD: ${ORO_DB_PASSWORD:-oro_api_dev}
+      ORO_SYSTEM_DATASOURCE_USERNAME: ${ORO_WORKER_DB_USERNAME:-oro_worker}
+      ORO_SYSTEM_DATASOURCE_PASSWORD: ${ORO_WORKER_DB_PASSWORD:-oro_worker_dev}
       ORO_OUTBOX_ENABLED: ${ORO_OUTBOX_ENABLED:-true}
+      # Swagger UI on /oro/doc: development only, set ORO_API_DOCS=false in production
+      ORO_API_DOCS: ${ORO_API_DOCS:-true}
       # the tokens of the users: each product's own secret (empty: that product's users cannot call Oro)
       ORO_JWT_SECRET: ${ORO_JWT_SECRET:-}
       UMOJA_JWT_SECRET: ${UMOJA_JWT_SECRET:-}
@@ -37,7 +42,9 @@ services:
     # until the shared database accepts connections
     restart: on-failure
     ports:
-      - "${ORO_PORT:-8082}:8082"
+      # on this machine only: the browsers reach Oro through the proxy of a product (Umoja's nginx), and Umoja's backend
+      # on the network asataDB; never published on every interface (/internal would be reachable)
+      - "127.0.0.1:${ORO_PORT:-8082}:8082"
 
 volumes:
   attachments:

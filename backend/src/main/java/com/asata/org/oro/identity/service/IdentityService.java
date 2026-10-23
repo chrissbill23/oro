@@ -1,13 +1,13 @@
 package com.asata.org.oro.identity.service;
 
 import com.asata.org.oro.context.DbSession;
+import com.asata.org.oro.live.LiveAuthorization;
 import com.asata.org.oro.enums.IdentityStatus;
 import com.asata.org.oro.enums.Product;
 import com.asata.org.oro.exception.Forbidden;
 import com.asata.org.oro.exception.NotFound;
 import com.asata.org.oro.identity.repository.MessagingIdentityRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,20 +29,20 @@ import java.util.stream.Collectors;
 public class IdentityService {
 
     private final DbSession session;
-    private final JdbcTemplate jdbc;
+    private final LiveAuthorization live;
     private final MessagingIdentityRepository identities;
 
     /**
      * The identity of an account of a product, created at its first use; idempotent and safe under concurrency (the
      * unique (product_id, external_user_id): a second creation does nothing and reads the first).
      */
-    @Transactional
+    @Transactional(transactionManager = DbSession.SYSTEM_TRANSACTION_MANAGER)
     public UUID provision(Product product, String externalUserId) {
         session.enterSystem();
-        jdbc.update("""
+        session.jdbc().update("""
                 INSERT INTO oro_messaging_identity(id, product_id, external_user_id) VALUES (?, ?, ?)
                 ON CONFLICT (product_id, external_user_id) DO NOTHING""", UUID.randomUUID(), product.code(), externalUserId);
-        return jdbc.queryForObject("SELECT id FROM oro_messaging_identity WHERE product_id = ? AND external_user_id = ?",
+        return session.jdbc().queryForObject("SELECT id FROM oro_messaging_identity WHERE product_id = ? AND external_user_id = ?",
                 UUID.class, product.code(), externalUserId);
     }
 
@@ -60,16 +60,16 @@ public class IdentityService {
      * The active identity of an account whose token the API verified, created at its first request (the token of the
      * product proves the account exists). Forbidden when it is suspended or deactivated.
      */
-    @Transactional
+    @Transactional(transactionManager = DbSession.SYSTEM_TRANSACTION_MANAGER)
     public UUID resolveOrProvision(Product product, String externalUserId) {
         session.enterSystem();
-        var rows = jdbc.queryForList("SELECT id, status FROM oro_messaging_identity WHERE product_id = ? AND external_user_id = ?",
+        var rows = session.jdbc().queryForList("SELECT id, status FROM oro_messaging_identity WHERE product_id = ? AND external_user_id = ?",
                 product.code(), externalUserId);
         if (rows.isEmpty()) {
-            jdbc.update("""
+            session.jdbc().update("""
                     INSERT INTO oro_messaging_identity(id, product_id, external_user_id) VALUES (?, ?, ?)
                     ON CONFLICT (product_id, external_user_id) DO NOTHING""", UUID.randomUUID(), product.code(), externalUserId);
-            rows = jdbc.queryForList("SELECT id, status FROM oro_messaging_identity WHERE product_id = ? AND external_user_id = ?",
+            rows = session.jdbc().queryForList("SELECT id, status FROM oro_messaging_identity WHERE product_id = ? AND external_user_id = ?",
                     product.code(), externalUserId);
         }
         var row = rows.getFirst();
@@ -80,10 +80,10 @@ public class IdentityService {
     }
 
     /** oro_system: the identity of an account, whatever its status */
-    @Transactional(readOnly = true)
+    @Transactional(transactionManager = DbSession.SYSTEM_TRANSACTION_MANAGER, readOnly = true)
     public Optional<UUID> find(Product product, String externalUserId) {
         session.enterSystem();
-        return jdbc.queryForList("SELECT id FROM oro_messaging_identity WHERE product_id = ? AND external_user_id = ?",
+        return session.jdbc().queryForList("SELECT id FROM oro_messaging_identity WHERE product_id = ? AND external_user_id = ?",
                 UUID.class, product.code(), externalUserId).stream().findFirst();
     }
 
@@ -96,32 +96,34 @@ public class IdentityService {
     }
 
     /** suspended: keeps its conversations, reads and sends nothing until it is active again */
-    @Transactional
+    @Transactional(transactionManager = DbSession.SYSTEM_TRANSACTION_MANAGER)
     public void suspend(UUID identityId) {
         setStatus(identityId, "suspended", "status = 'active'");
+        live.closeAfterCommit(identityId);
     }
 
-    @Transactional
+    @Transactional(transactionManager = DbSession.SYSTEM_TRANSACTION_MANAGER)
     public void reactivate(UUID identityId) {
         setStatus(identityId, "active", "status = 'suspended'");
     }
 
     /** final: the identity leaves all its conversations and loses its organization accesses (trigger) */
-    @Transactional
+    @Transactional(transactionManager = DbSession.SYSTEM_TRANSACTION_MANAGER)
     public void deactivate(UUID identityId) {
         session.enterSystem();
-        int updated = jdbc.update("""
+        int updated = session.jdbc().update("""
                 UPDATE oro_messaging_identity SET status = 'deactivated', deactivated_at = now()
                 WHERE id = ? AND status <> 'deactivated'""", identityId);
         if (updated == 0 && !exists(identityId)) {
             throw new NotFound("Messaging identity not found");
         }
+        live.closeAfterCommit(identityId);
     }
 
     private void setStatus(UUID identityId, String status, String from) {
         session.enterSystem();
         // status and from: constants of this class
-        int updated = jdbc.update("UPDATE oro_messaging_identity SET status = '" + status + "' WHERE id = ? AND " + from,
+        int updated = session.jdbc().update("UPDATE oro_messaging_identity SET status = '" + status + "' WHERE id = ? AND " + from,
                 identityId);
         if (updated == 0 && !exists(identityId)) {
             throw new NotFound("Messaging identity not found");
@@ -129,7 +131,7 @@ public class IdentityService {
     }
 
     private boolean exists(UUID identityId) {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
+        return Boolean.TRUE.equals(session.jdbc().queryForObject(
                 "SELECT EXISTS (SELECT 1 FROM oro_messaging_identity WHERE id = ?)", Boolean.class, identityId));
     }
 }

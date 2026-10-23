@@ -35,17 +35,21 @@ spring:
   datasource:
     driver-class-name: org.postgresql.Driver
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/asata}
-    # a NOINHERIT login role, member of oro_app and oro_system (see DbSession); never a superuser: it bypasses RLS
-    username: ${SPRING_DATASOURCE_USERNAME:oro_service}
+    # the API's login: NOINHERIT, a member of oro_app only (see DbSession, DataSourceConfig); never a superuser: it
+    # bypasses RLS
+    username: ${SPRING_DATASOURCE_USERNAME:oro_api}
     password: ${SPRING_DATASOURCE_PASSWORD:}
     hikari:
       connection-timeout: 5000
       validation-timeout: 3000
 springdoc:
+  # the API description and Swagger UI: off unless ORO_API_DOCS=true (development); never in production
   api-docs:
+    enabled: ${ORO_API_DOCS:false}
     path: /doc/api
     version: openapi_3_0
   swagger-ui:
+    enabled: ${ORO_API_DOCS:false}
     operations-sorter: method
     path: /doc
     url: /doc/api
@@ -59,6 +63,16 @@ management:
       # the details (database...) to nobody: /actuator/health is public
       show-details: never
 oro:
+  # the worker's login, for the integrations and the workers: NOINHERIT, a member of oro_system only; the same database
+  system-datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${ORO_SYSTEM_DATASOURCE_URL:${spring.datasource.url}}
+    username: ${ORO_SYSTEM_DATASOURCE_USERNAME:oro_worker}
+    password: ${ORO_SYSTEM_DATASOURCE_PASSWORD:}
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 5000
+      validation-timeout: 3000
   security:
     cors-allowed-origins: ${ORO_CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:4201}
     products:

@@ -39,6 +39,8 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
 
     @Autowired
     private OrganizationSyncService sync;
+    /** the versions of the snapshots, as Umoja numbers them */
+    private long version;
     @Autowired
     private LiveOutboxEventHandler liveHandler;
     @MockitoSpyBean
@@ -52,7 +54,7 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
 
     @BeforeEach
     void acme() {
-        sync.sync(ACME, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"), List.of());
+        sync.sync(ACME, ++version, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"), List.of());
         jordan = identities.find(Product.UMOJA, "umoja-jordan").orElseThrow();
         amara = identities.find(Product.UMOJA, "umoja-amara").orElseThrow();
         kwame = identities.find(Product.UMOJA, "umoja-kwame").orElseThrow();
@@ -71,7 +73,7 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
 
     @Test
     void theChatOfATeamFollowsItsNameAndMembers() {
-        var created = sync.sync(ACME, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"),
+        var created = sync.sync(ACME, ++version, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"),
                 List.of(new TeamChat(DESIGN, "Design", List.of("umoja-jordan", "umoja-amara"))));
         assertThat(created.chatsCreated()).isEqualTo(1);
         ConversationSummary chat = conversations.list(jordanActor).getFirst();
@@ -82,7 +84,7 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
         assertThat(systemEvents(jordanActor, chat.id())).isEmpty();
 
         // Kwame joins the team, Amara leaves it, the team is renamed
-        var changed = sync.sync(ACME, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"),
+        var changed = sync.sync(ACME, ++version, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"),
                 List.of(new TeamChat(DESIGN, "Product & Design", List.of("umoja-jordan", "umoja-kwame"))));
         assertThat(changed.joined()).isEqualTo(1);
         assertThat(changed.left()).isEqualTo(1);
@@ -93,7 +95,7 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
         assertThat(messages.page(Actor.umoja(kwame, ACME), chat.id(), null, 20).messages()).hasSize(2);
 
         // nothing changes, nothing is written
-        var again = sync.sync(ACME, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"),
+        var again = sync.sync(ACME, ++version, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"),
                 List.of(new TeamChat(DESIGN, "Product & Design", List.of("umoja-jordan", "umoja-kwame"))));
         assertThat(List.of(again.granted(), again.revoked(), again.chatsCreated(), again.joined(), again.left()))
                 .containsOnly(0);
@@ -110,21 +112,52 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
                 ACME, jordan)), "permission denied");
 
         // the team is gone: the chat keeps its history and loses its members
-        sync.sync(ACME, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"), List.of());
+        sync.sync(ACME, ++version, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"), List.of());
         assertThat(conversations.list(jordanActor)).isEmpty();
     }
 
     @Test
     void someoneWhoLeavesTheOrganizationLosesItsConversations() {
         Conversation direct = conversations.openDirect(jordanActor, amara);
-        var result = sync.sync(ACME, List.of("umoja-jordan", "umoja-kwame"), List.of());
+        var result = sync.sync(ACME, ++version, List.of("umoja-jordan", "umoja-kwame"), List.of());
         assertThat(result.revoked()).isEqualTo(1);
         assertThat(organizationAccess.isGranted(amara, ACME)).isFalse();
         assertThatThrownBy(() -> messages.page(amaraActor, direct.getId(), null, 20)).isInstanceOf(NotFound.class);
         // back: a new access, but not its old memberships
-        sync.sync(ACME, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"), List.of());
+        sync.sync(ACME, ++version, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"), List.of());
         assertThat(organizationAccess.isGranted(amara, ACME)).isTrue();
         assertThat(conversations.list(amaraActor)).isEmpty();
+    }
+
+    /** a snapshot read before a revocation, arriving after it, gives nothing back */
+    @Test
+    void aLateSnapshotDoesNotBringBackARevokedAccess() {
+        long before = ++version;
+        long after = ++version;
+        var revoked = sync.sync(ACME, after, List.of("umoja-jordan", "umoja-kwame"), List.of());
+        assertThat(revoked.revoked()).isEqualTo(1);
+
+        var late = sync.sync(ACME, before, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"), List.of());
+        assertThat(late.applied()).isFalse();
+        assertThat(organizationAccess.isGranted(amara, ACME)).isFalse();
+        // the same version again: nothing either
+        assertThat(sync.sync(ACME, after, List.of("umoja-jordan", "umoja-amara", "umoja-kwame"), List.of()).applied()).isFalse();
+        assertThat(organizationAccess.isGranted(amara, ACME)).isFalse();
+    }
+
+    /** concurrent snapshots of one organization run one after the other; the newest decides, whatever the order */
+    @Test
+    void concurrentSynchronizationsEndAsTheNewestSnapshot() throws Exception {
+        long base = version;
+        // the odd versions have Amara, the even ones do not; the newest (base + 8) does not
+        List<Boolean> applied = concurrently(8, i -> sync.sync(ACME, base + i + 1,
+                i % 2 == 0 ? List.of("umoja-jordan", "umoja-amara", "umoja-kwame") : List.of("umoja-jordan", "umoja-kwame"),
+                List.of()).applied());
+        assertThat(applied).contains(true);
+        assertThat(organizationAccess.isGranted(amara, ACME)).isFalse();
+        assertThat(organizationAccess.isGranted(kwame, ACME)).isTrue();
+        assertThat(admin.queryForObject("SELECT last_version FROM oro_organization_sync WHERE organization_id = ?",
+                Long.class, ACME)).isEqualTo(base + 8);
     }
 
     @Test

@@ -3,8 +3,8 @@
 You need Docker, and the repositories `1_ASATA_DATABASE` and `oro` side by side. Run the commands from the root of
 `oro`.
 
-1. **Start the shared database.** On a new database, the Oro tables and the development login `oro_service` are created
-   on the first start.
+1. **Start the shared database.** On a new database, the Oro tables and the development logins `oro_api` (the API) and
+   `oro_worker` (the integrations and workers) are created on the first start.
 
    ```bash
    docker compose -f ../1_ASATA_DATABASE/docker-compose.yml up -d

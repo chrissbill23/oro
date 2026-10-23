@@ -43,7 +43,8 @@ public interface IntegrationApi {
 
     @Operation(summary = "Synchronize an organization (Umoja)",
             description = "Its members (the others lose their access and leave its conversations) and the chats of its teams "
-                    + "(their names and members); idempotent, sent on every change and periodically")
+                    + "(their names and members); idempotent, sent on every change and periodically. One at a time per "
+                    + "organization; a snapshot older than the last applied (version) changes nothing: applied false")
     @PutMapping("/organizations/{organizationId}")
     OrganizationSyncDTO syncOrganization(@Parameter(hidden = true) @AuthenticationPrincipal Product product,
                                          @PathVariable UUID organizationId, @Valid @RequestBody OrganizationSyncRequest request);

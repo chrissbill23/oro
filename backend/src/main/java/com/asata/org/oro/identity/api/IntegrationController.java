@@ -44,11 +44,12 @@ public class IntegrationController implements IntegrationApi {
     @Override
     public OrganizationSyncDTO syncOrganization(Product product, UUID organizationId, OrganizationSyncRequest request) {
         requireUmoja(product);
-        OrganizationSyncService.Result result = organizationSync.sync(organizationId, request.memberUserIds(),
+        OrganizationSyncService.Result result = organizationSync.sync(organizationId, request.version(), request.memberUserIds(),
                 request.teams().stream()
                         .map(team -> new OrganizationSyncService.TeamChat(team.teamId(), team.name(), team.memberUserIds()))
                         .toList());
-        return new OrganizationSyncDTO(result.granted(), result.revoked(), result.chatsCreated(), result.joined(), result.left());
+        return new OrganizationSyncDTO(result.applied(), result.granted(), result.revoked(), result.chatsCreated(), result.joined(),
+                result.left());
     }
 
     @Override

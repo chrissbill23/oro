@@ -93,10 +93,10 @@ class ConversationAccessTest extends PostgresIntegrationTest {
         assertThatThrownBy(() -> messages.page(chausikuActor, family.getId(), null, 20)).isInstanceOf(NotFound.class);
         assertThatThrownBy(() -> say(chausikuActor, family.getId(), "Still here?")).isInstanceOf(NotFound.class);
         assertThat(visibleMessages(chausikuActor, family.getId())).isZero();
-        // past the services: rejoining alone and sending are refused by RLS and the triggers
+        // past the services: rejoining alone and sending are refused by the triggers (before RLS)
         assertRefused(() -> asUser(chausikuActor, jdbc -> jdbc.update("""
                 INSERT INTO oro_conversation_member(id, conversation_id, product_id, user_id) VALUES (gen_random_uuid(), ?, 'ORO', ?)""",
-                family.getId(), chausiku)), "row-level security");
+                family.getId(), chausiku)), "only the owner and the admins add members");
         assertRefused(() -> asUser(chausikuActor, jdbc -> jdbc.update("""
                 INSERT INTO oro_message(id, conversation_id, product_id, seq, sender_id, client_message_id, body)
                 VALUES (gen_random_uuid(), ?, 'ORO', 1, ?, 'raw-key-0001', 'Sneaky')""", family.getId(), chausiku)),
@@ -256,5 +256,97 @@ class ConversationAccessTest extends PostgresIntegrationTest {
 
         assertThat(admin.queryForObject("SELECT user_id FROM oro_conversation_member WHERE conversation_id = ? AND role = 'owner' AND left_at IS NULL",
                 UUID.class, family.getId())).isEqualTo(baraka);
+    }
+
+    /** the API posts system messages through a function that writes only what did happen, as who did it */
+    @Test
+    void aSystemMessageTellsOnlyWhatHappened() {
+        Conversation family = conversations.createGroup(amaniActor, "Family", null, List.of(baraka, chausiku));
+        UUID id = family.getId();
+        String post = "SELECT message_id FROM oro_post_system_message(?, ?, ?)";
+
+        // Baraka, a plain member: nobody was removed nor renamed by him, Chausiku did not leave, he added nobody
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.queryForObject(post, UUID.class, id, "member.removed", chausiku)),
+                "a system message tells what happened");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.queryForObject(post, UUID.class, id, "conversation.renamed", null)),
+                "only the owner and the admins rename a group");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.queryForObject(post, UUID.class, id, "member.left", chausiku)),
+                "a system message tells what happened");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.queryForObject(post, UUID.class, id, "member.joined", chausiku)),
+                "a system message tells what happened");
+        // a stranger, and an unknown event
+        assertRefused(() -> asUser(Actor.umoja(umojaUser("jordan", ACME), ACME),
+                jdbc -> jdbc.queryForObject(post, UUID.class, id, "member.joined", baraka)), "system messages are posted in a group of the product");
+        assertRefused(() -> asUser(amaniActor, jdbc -> jdbc.queryForObject(post, UUID.class, id, "member.promoted", baraka)),
+                "unknown system event");
+        assertThat(count("SELECT count(*) FROM oro_message WHERE conversation_id = ?", id)).isZero();
+
+        // what did happen, by who did it: the metadata comes from the rows
+        conversations.removeMember(amaniActor, id, chausiku);
+        assertThat(admin.queryForObject("SELECT metadata::text FROM oro_message WHERE conversation_id = ? AND message_type = 'system'",
+                String.class, id)).contains("\"event\": \"member.removed\"", "\"userId\": \"oro-chausiku\"", "\"byUserId\": \"oro-amani\"");
+    }
+
+    /** raw SQL as oro_app, past the checks of the services: the roles hold in the database too */
+    @Test
+    void theRolesAreTheDatabasesToCheckToo() {
+        UUID dede = oroUser("dede");
+        Conversation family = conversations.createGroup(amaniActor, "Family", null, List.of(baraka, chausiku));
+        Conversation direct = conversations.openDirect(amaniActor, baraka);
+        UUID id = family.getId();
+        // Chausiku administers the group (as the owner would make her)
+        asUser(amaniActor, jdbc -> jdbc.update(
+                "UPDATE oro_conversation_member SET role = 'admin' WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", id, chausiku));
+
+        // Baraka, a plain member: no role, no removal, no rename, no addition, nobody else's positions
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.update(
+                "UPDATE oro_conversation_member SET role = 'owner' WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", id, baraka)),
+                "a member does not change its own role");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.update(
+                "UPDATE oro_conversation_member SET role = 'member' WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL", id, chausiku)),
+                "only the owner changes the roles");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.update("""
+                UPDATE oro_conversation_member SET left_at = now(), left_reason = 'removed'
+                WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL""", id, amani)),
+                "the owner and the admins remove members");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.update(
+                "UPDATE oro_conversation SET name = 'Mine now' WHERE id = ?", id)),
+                "only the owner and the admins rename a group");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.update("""
+                INSERT INTO oro_conversation_member(id, conversation_id, product_id, user_id, role, shared_history, added_by)
+                VALUES (?, ?, 'ORO', ?, 'member', TRUE, ?)""", UUID.randomUUID(), id, dede, baraka)),
+                "only the owner and the admins add members");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.update(
+                "UPDATE oro_conversation_member SET muted_until = now() + interval '1 day' WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL",
+                id, amani)), "the positions and the mute of a member are its own");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.update("""
+                UPDATE oro_conversation_member SET left_at = now(), left_reason = 'access_revoked'
+                WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL""", id, baraka)),
+                "a member ends its own membership by leaving");
+        assertRefused(() -> asUser(barakaActor, jdbc -> jdbc.update("""
+                UPDATE oro_conversation_member SET left_at = now(), left_reason = 'left'
+                WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL""", direct.getId(), baraka)),
+                "a direct conversation and a team chat are not left nor removed from");
+        // an admin adds as a member only, and never removes the owner
+        assertRefused(() -> asUser(chausikuActor, jdbc -> jdbc.update("""
+                INSERT INTO oro_conversation_member(id, conversation_id, product_id, user_id, role, shared_history, added_by)
+                VALUES (?, ?, 'ORO', ?, 'admin', TRUE, ?)""", UUID.randomUUID(), id, dede, chausiku)),
+                "only the owner and the admins add members, as members");
+        assertRefused(() -> asUser(chausikuActor, jdbc -> jdbc.update("""
+                UPDATE oro_conversation_member SET left_at = now(), left_reason = 'removed'
+                WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL""", id, amani)),
+                "the owner and the admins remove members");
+        assertThat(count("SELECT count(*) FROM oro_conversation_member WHERE conversation_id = ? AND role = 'owner' AND left_at IS NULL", id))
+                .isEqualTo(1);
+        assertThat(admin.queryForObject("SELECT name FROM oro_conversation WHERE id = ?", String.class, id)).isEqualTo("Family");
+
+        // what the roles allow still works
+        asUser(chausikuActor, jdbc -> jdbc.update(
+                "UPDATE oro_conversation SET name = 'The family' WHERE id = ?", id));
+        asUser(chausikuActor, jdbc -> jdbc.update("""
+                UPDATE oro_conversation_member SET left_at = now(), left_reason = 'removed'
+                WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL""", id, baraka));
+        assertThat(count("SELECT count(*) FROM oro_conversation_member WHERE conversation_id = ? AND left_at IS NULL", id))
+                .isEqualTo(2);
     }
 }

@@ -30,7 +30,7 @@ class SchemaScriptTest extends PostgresIntegrationTest {
                 WHERE relname LIKE 'oro\\_%' AND relkind = 'r' ORDER BY relname""");
         assertThat(tables).extracting(t -> t.get("relname")).containsExactly("oro_attachment", "oro_conversation",
                 "oro_conversation_member", "oro_message", "oro_message_reaction", "oro_messaging_identity", "oro_organization_access",
-                "oro_outbox_event");
+                "oro_organization_sync", "oro_outbox_event");
         assertThat(tables).allSatisfy(t -> {
             assertThat(t.get("relrowsecurity")).isEqualTo(true);
             assertThat(t.get("owner")).isEqualTo("oro_owner");
@@ -41,8 +41,15 @@ class SchemaScriptTest extends PostgresIntegrationTest {
     void theApiRoleCannotBypassRlsNorTouchTheOrganizationAccesses() {
         assertThat(admin.queryForObject("SELECT rolbypassrls OR rolsuper FROM pg_roles WHERE rolname = 'oro_app'",
                 Boolean.class)).isFalse();
-        assertThat(admin.queryForObject("SELECT rolbypassrls OR rolsuper OR rolinherit FROM pg_roles WHERE rolname = 'oro_service'",
-                Boolean.class)).isFalse();
+        for (String login : List.of("oro_api", "oro_worker")) {
+            assertThat(admin.queryForObject("SELECT rolbypassrls OR rolsuper OR rolinherit FROM pg_roles WHERE rolname = ?",
+                    Boolean.class, login)).as(login).isFalse();
+        }
+        // the API's login is a member of oro_app only, the worker's of oro_system only
+        String memberships = """
+                SELECT r.rolname FROM pg_auth_members a JOIN pg_roles r ON r.oid = a.roleid WHERE a.member = ?::regrole""";
+        assertThat(admin.queryForList(memberships, String.class, "oro_api")).containsExactly("oro_app");
+        assertThat(admin.queryForList(memberships, String.class, "oro_worker")).containsExactly("oro_system");
         assertThat(admin.queryForObject("SELECT has_table_privilege('oro_app', 'oro_organization_access', 'SELECT')",
                 Boolean.class)).isFalse();
         assertThat(admin.queryForObject("SELECT has_table_privilege('oro_app', 'oro_outbox_event', 'SELECT')",

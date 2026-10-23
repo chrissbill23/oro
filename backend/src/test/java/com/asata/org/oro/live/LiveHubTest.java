@@ -4,6 +4,7 @@ import com.asata.org.oro.context.Actor;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.time.Instant;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,9 +44,25 @@ class LiveHubTest {
     }
 
     private final List<RecordingEmitter> emitters = new ArrayList<>();
-    private final LiveHub hub = new LiveHub() {
+    private Instant now = Instant.parse("2026-10-23T10:00:00Z");
+    private final LiveHub hub = new LiveHub(new java.time.Clock() {
         @Override
-        protected SseEmitter newEmitter() {
+        public java.time.ZoneId getZone() {
+            return java.time.ZoneOffset.UTC;
+        }
+
+        @Override
+        public java.time.Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
+        }
+    }) {
+        @Override
+        protected SseEmitter newEmitter(java.time.Duration timeout) {
             RecordingEmitter emitter = new RecordingEmitter();
             emitters.add(emitter);
             return emitter;
@@ -53,7 +70,11 @@ class LiveHubTest {
     };
 
     private RecordingEmitter connect(UUID identity, String userId, UUID organization) {
-        return (RecordingEmitter) hub.connect(Actor.umoja(identity, organization), userId);
+        return connect(identity, userId, organization, now.plus(java.time.Duration.ofMinutes(15)));
+    }
+
+    private RecordingEmitter connect(UUID identity, String userId, UUID organization, Instant tokenExpiresAt) {
+        return (RecordingEmitter) hub.connect(Actor.umoja(identity, organization), userId, tokenExpiresAt);
     }
 
     @Test
@@ -93,5 +114,51 @@ class LiveHubTest {
         assertThat(acme.ofType("typing")).hasSize(1);
         assertThat(globex.ofType("typing")).isEmpty();
         assertThat(other.ofType("typing")).isEmpty();
+    }
+
+    /** a stream ends with its token: the client is told to reconnect (with a new token) and is offline meanwhile */
+    @Test
+    void aStreamEndsWhenItsTokenExpires() {
+        UUID jordan = UUID.randomUUID();
+        RecordingEmitter amara = connect(UUID.randomUUID(), "amara", ACME);
+        RecordingEmitter shortToken = connect(jordan, "jordan", ACME, now.plus(java.time.Duration.ofMinutes(2)));
+        // a token longer than 30 minutes: the stream still ends after 30
+        RecordingEmitter longToken = connect(UUID.randomUUID(), "kwame", ACME, now.plus(java.time.Duration.ofHours(2)));
+
+        assertThat(hub.closeExpired()).isZero();
+        now = now.plus(java.time.Duration.ofMinutes(2));
+        assertThat(hub.closeExpired()).isEqualTo(1);
+        assertThat(shortToken.ofType("reconnect")).hasSize(1);
+        assertThat(hub.online(com.asata.org.oro.enums.Product.UMOJA, ACME)).containsExactly("amara", "kwame");
+        assertThat(amara.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "jordan", "online", false));
+
+        now = now.plus(java.time.Duration.ofMinutes(28));
+        assertThat(hub.closeExpired()).isEqualTo(2);
+        assertThat(longToken.ofType("reconnect")).hasSize(1);
+        assertThat(hub.subjects()).isEmpty();
+    }
+
+    /** closed by identity (suspended, deactivated) or by organization (access revoked): no event, no presence after */
+    @Test
+    void aStreamIsClosedWhenItsIdentityOrItsAccessEnds() {
+        UUID jordan = UUID.randomUUID();
+        RecordingEmitter amara = connect(UUID.randomUUID(), "amara", ACME);
+        RecordingEmitter jordanAcme = connect(jordan, "jordan", ACME);
+        RecordingEmitter jordanGlobex = connect(jordan, "jordan", GLOBEX);
+
+        // Jordan loses Acme only
+        assertThat(hub.close(jordan, ACME)).isEqualTo(1);
+        assertThat(hub.online(com.asata.org.oro.enums.Product.UMOJA, ACME)).containsExactly("amara");
+        assertThat(hub.online(com.asata.org.oro.enums.Product.UMOJA, GLOBEX)).containsExactly("jordan");
+        int before = jordanAcme.events.size();
+        hub.send(List.of(jordan), com.asata.org.oro.enums.Product.UMOJA, ACME, Map.of("type", "message"));
+        assertThat(jordanAcme.events).hasSize(before);
+        assertThat(jordanAcme.ofType("reconnect")).isEmpty();
+
+        // then the identity is suspended
+        assertThat(hub.close(jordan)).isEqualTo(1);
+        assertThat(hub.subjects()).extracting(LiveHub.Subject::identityId).doesNotContain(jordan);
+        assertThat(jordanGlobex.ofType("presence")).isEmpty();
+        assertThat(amara.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "jordan", "online", false));
     }
 }

@@ -4,12 +4,9 @@ import com.asata.org.oro.context.Actor;
 import com.asata.org.oro.context.DbSession;
 import com.asata.org.oro.enums.Product;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.*;
 
@@ -23,8 +20,6 @@ public class LiveEvents {
 
     private final LiveHub hub;
     private final DbSession session;
-    private final JdbcTemplate jdbc;
-    private final PlatformTransactionManager transactionManager;
 
     /** after the commit of the current transaction (at once without one): the event to these identities */
     public void afterCommit(Collection<UUID> identityIds, Actor actor, Map<String, ?> event) {
@@ -46,14 +41,14 @@ public class LiveEvents {
     public void toConversation(UUID conversationId, Map<String, ?> event, Collection<UUID> extra) {
         record Target(Product product, UUID organizationId, List<UUID> members) {
         }
-        Target target = new TransactionTemplate(transactionManager).execute(status -> {
+        Target target = session.systemTransaction().execute(status -> {
             session.enterSystem();
-            List<Map<String, Object>> rows = jdbc.queryForList(
+            List<Map<String, Object>> rows = session.jdbc().queryForList(
                     "SELECT product_id, organization_id FROM oro_conversation WHERE id = ?", conversationId);
             if (rows.isEmpty()) {
                 return null;
             }
-            List<UUID> members = jdbc.queryForList(
+            List<UUID> members = session.jdbc().queryForList(
                     "SELECT user_id FROM oro_conversation_member WHERE conversation_id = ? AND left_at IS NULL",
                     UUID.class, conversationId);
             return new Target(Product.of((String) rows.getFirst().get("product_id")),

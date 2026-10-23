@@ -39,8 +39,8 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
  * The tests run on a PostgreSQL 17 (Testcontainers, Docker required) created by the real scripts of
- * 1_ASATA_DATABASE (CREATE_ORO_TABLES.sql: tables, triggers, roles, RLS), as the backend runs: the login oro_service
- * (NOINHERIT) taking oro_app or oro_system per transaction. {@link #admin} is the superuser of the container (it
+ * 1_ASATA_DATABASE (CREATE_ORO_TABLES.sql: tables, triggers, roles, RLS), as the backend runs: the API's login oro_api
+ * (NOINHERIT) taking oro_app per transaction, the worker's login oro_worker taking oro_system. {@link #admin} is the superuser of the container (it
  * bypasses RLS): only to prepare and check the rows. Every test starts on empty tables.
  */
 @SpringBootTest
@@ -77,8 +77,11 @@ public abstract class PostgresIntegrationTest {
     @DynamicPropertySource
     static void datasource(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", () -> "oro_service");
-        registry.add("spring.datasource.password", () -> "oro_service_test");
+        registry.add("spring.datasource.username", () -> "oro_api");
+        registry.add("spring.datasource.password", () -> "oro_api_test");
+        registry.add("oro.system-datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("oro.system-datasource.username", () -> "oro_worker");
+        registry.add("oro.system-datasource.password", () -> "oro_worker_test");
     }
 
     @Autowired
@@ -97,7 +100,7 @@ public abstract class PostgresIntegrationTest {
     protected TestOutboxHandler outboxHandler;
     @Autowired
     protected DbSession session;
-    /** the JdbcTemplate of the backend: oro_service, in the transactions of {@link #tx} */
+    /** the JdbcTemplate of the API: oro_api, in the transactions of {@link #tx} */
     @Autowired
     protected JdbcTemplate jdbc;
     @Autowired
@@ -110,7 +113,7 @@ public abstract class PostgresIntegrationTest {
         tx = new TransactionTemplate(transactionManager);
         admin.execute("""
                 TRUNCATE oro_outbox_event, oro_message_reaction, oro_attachment, oro_message, oro_conversation_member, oro_conversation,
-                         oro_organization_access, oro_messaging_identity""");
+                         oro_organization_access, oro_organization_sync, oro_messaging_identity""");
         outboxHandler.reset();
     }
 

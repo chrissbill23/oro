@@ -99,7 +99,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
 
 ## P0: Critical security and data integrity
 
-- [ ] `ORO-SEC-001` — P0 — Give the API a database login that cannot become `oro_system`
+- [x] `ORO-SEC-001` — P0 — Give the API a database login that cannot become `oro_system`
+  - Done (2026-10-23): Two logins and two pools (`context/DataSourceConfig.java`): `oro_api` (member of `oro_app` only) for the requests, `oro_worker` (member of `oro_system` only) for the integrations and workers; `DbSession.enterSystem` works only in a system transaction. System messages go through `oro_post_system_message` instead of taking `oro_system`. Tested: `RlsContextTest.theApiLoginNeverTakesTheSystemRole`, `SchemaScriptTest`.
   - Current state: Confirmed defect
   - Evidence: `1_ASATA_DATABASE/oro/INSERT.sql` grants `oro_app` and `oro_system` to the one login `oro_service`;
     `oro/backend/src/main/java/com/asata/org/oro/context/DbSession.java` (`enterSystem`). Checked: as
@@ -118,7 +119,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Verification: `SchemaScriptTest` checks the role memberships; a new test tries `SET ROLE oro_system` on the API
     pool.
 
-- [ ] `ORO-SEC-002` — P0 — Enforce member roles in the database, not only in Java
+- [x] `ORO-SEC-002` — P0 — Enforce member roles in the database, not only in Java
+  - Done (2026-10-23): The membership and conversation triggers check the roles for a user; `oro_post_system_message` posts only what happened. Tested: `ConversationAccessTest.theRolesAreTheDatabasesToCheckToo`, `aSystemMessageTellsOnlyWhatHappened`.
   - Current state: Confirmed defect
   - Evidence: `CREATE_ORO_TABLES.sql`: policy `p_oro_conversation_member_app_update` lets any active member update
     any membership of its conversations, `GRANT UPDATE (role, …, left_at, left_reason)` to `oro_app`, and
@@ -158,7 +160,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: `ApiTest` with tokens signed by a test key pair: wrong key, wrong audience, unknown `kid`, rotation
 
-- [ ] `ORO-SEC-004` — P0 — Tighten token validation: audience, subject, clock skew
+- [x] `ORO-SEC-004` — P0 — Tighten token validation: audience, subject, clock skew
+  - Done (2026-10-23): Partly: expiry required, 30 s of skew, not-before, subject in the form of an account id (`SecurityConfig.userTokenManagers`). The audience waits for `ORO-SEC-003`. Tested: `ApiTest.aTokenIsCheckedBeyondItsSignature`.
   - Current state: Partially implemented (HS256 only, issuer, expiry and signature are checked)
   - Evidence: `SecurityConfig.userTokenManagers` uses `JwtValidators.createDefaultWithIssuer` (60 s skew, no
     audience); `ActorResolver` accepts any non-null subject.
@@ -170,7 +173,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: `ApiTest` cases for each rejected token
 
-- [ ] `ORO-SEC-005` — P0 — Keep `/internal` and Oro itself off the public network
+- [x] `ORO-SEC-005` — P0 — Keep `/internal` and Oro itself off the public network
+  - Done (2026-10-23): Umoja's nginx answers 404 on `/oro/internal` and `/oro/actuator`; Oro's port is published on `127.0.0.1` only. Checked on the local stack, encoded and doubled slashes included. Production still has to keep Oro on its private network (`ORO-LCH-015`).
   - Current state: Confirmed defect
   - Evidence: `umoja/frontend/docker/nginx.conf.template` proxies `location /oro/` without exception; checked:
     `PUT http://localhost:4201/oro/internal/identities/probe` reached Oro (401 from Oro). `oro/backend/docker-compose.yml`
@@ -201,7 +205,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: `ApiTest`: two keys accepted, removed key refused; rotation done once on staging
 
-- [ ] `ORO-SEC-007` — P0 — Re-authorize open streams
+- [x] `ORO-SEC-007` — P0 — Re-authorize open streams
+  - Done (2026-10-23): `LiveHub` ends a stream at its token's expiry with `reconnect`; `LiveAuthorization` closes streams with the commit of a suspension, deactivation or revocation, and checks every 30 s. Tested: `LiveHubTest`, `LiveAuthorizationTest`; checked through Umoja's proxy.
   - Current state: Confirmed defect
   - Evidence: `oro/backend/src/main/java/com/asata/org/oro/live/LiveHub.java`: a stream is authorized once at
     `connect` and lives `STREAM_TIMEOUT` (30 min); Umoja access tokens live 15 min
@@ -219,7 +224,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: `LiveHubTest` with a recording emitter: each of the four cases closes the stream
 
-- [ ] `ORO-SEC-008` — P0 — Serialize the synchronizations of an organization and refuse stale ones
+- [x] `ORO-SEC-008` — P0 — Serialize the synchronizations of an organization and refuse stale ones
+  - Done (2026-10-23): `oro_organization_sync` serializes the synchronizations of an organization and ignores older versions; Umoja sends the version and reads and sends one organization at a time. Tested: `MessagingFeaturesTest.aLateSnapshotDoesNotBringBackARevokedAccess`, `concurrentSynchronizationsEndAsTheNewestSnapshot`, Umoja's `MessagingSyncIntegrationTest`.
   - Current state: Confirmed by code; the race is not reproduced by a test
   - Evidence: `oro/backend/src/main/java/com/asata/org/oro/identity/service/OrganizationSyncService.java` (`sync`
     takes no lock; the request has no version); Umoja sends a synchronization after every change, when a user opens the
@@ -235,7 +241,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Verification: a concurrency test with `concurrently(...)` from `PostgresIntegrationTest`: a revocation then an
     older snapshot
 
-- [ ] `ORO-SEC-009` — P0 — Keep database error details out of the logs
+- [x] `ORO-SEC-009` — P0 — Keep database error details out of the logs
+  - Done (2026-10-23): Verified: the driver (42.7) already leaves the refused row out of the logs. `logServerErrorDetail=false` set anyway. Tested: `LogPrivacyTest`.
   - Current state: Unverified (strong suspicion)
   - Evidence: `oro/backend/src/main/java/com/asata/org/oro/config/web/HttpExceptionHandler.java` (`dataIntegrity`)
     logs the root cause message. The PostgreSQL JDBC driver includes the server's `DETAIL` by default
@@ -330,7 +337,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: `MessagingApiTest`; review of Umoja's message rendering
 
-- [ ] `ORO-SEC-017` — P0 — Close Swagger and the API description in production
+- [x] `ORO-SEC-017` — P0 — Close Swagger and the API description in production
+  - Done (2026-10-23): `ORO_API_DOCS` (default false); on in the development compose file only. Tested in `ApiTest`.
   - Current state: Partially implemented (public on purpose for development)
   - Evidence: `SecurityConfig` permits `/doc/**`; `application.yml` (`springdoc`).
   - Action: `springdoc.api-docs.enabled=false` and `swagger-ui.enabled=false` outside development.
@@ -340,7 +348,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Recommended before launch
   - Verification: curl on the production configuration
 
-- [ ] `ORO-SEC-020` — P0 — Statement and idle-transaction timeouts on the database roles
+- [x] `ORO-SEC-020` — P0 — Statement and idle-transaction timeouts on the database roles
+  - Done (2026-10-23): Each context sets `statement_timeout`, `lock_timeout` and `idle_in_transaction_session_timeout` for its transaction (`oro.database.*`): set on the logins they would not apply after `SET ROLE`. Tested: `RlsContextTest.aUserTransactionIsBoundedInTime`.
   - Current state: Unverified (Hibernate queries time out after 10 s; JDBC ones have nothing)
   - Evidence: `application.yml` (`hibernate.query.timeout: 10000`); `JdbcTemplate` queries in `DbSession`,
     `IdentityService`, `OrganizationSyncService`, `OutboxWorker`, `LiveEvents`.
@@ -810,7 +819,8 @@ reads, pooled-connection context after commit and rollback, concurrent direct co
 retries, rollback with the outbox, leases and retries, revocation and history, attachment authorization. The gaps
 below are scenarios that are not covered.
 
-- [ ] `ORO-TST-001` — P4 — Streams after expiry, suspension and revocation
+- [x] `ORO-TST-001` — P4 — Streams after expiry, suspension and revocation
+  - Done (2026-10-23): With `ORO-SEC-007`.
   - Current state: Missing
   - Evidence: `LiveHubTest` covers scope and presence only.
   - Action: the four cases of `ORO-SEC-007`.
@@ -820,7 +830,8 @@ below are scenarios that are not covered.
   - Launch impact: Blocker
   - Verification: CI
 
-- [ ] `ORO-TST-002` — P4 — Database-level role rules
+- [x] `ORO-TST-002` — P4 — Database-level role rules
+  - Done (2026-10-23): With `ORO-SEC-002`.
   - Current state: Missing
   - Evidence: role checks are tested through the services only (`groupMembersAreManagedByTheOwnerWithTheHistoryChoice`).
   - Action: raw SQL as `oro_app` for each forbidden change of `ORO-SEC-002`.
@@ -830,7 +841,8 @@ below are scenarios that are not covered.
   - Launch impact: Blocker
   - Verification: CI
 
-- [ ] `ORO-TST-003` — P4 — Overlapping organization synchronizations
+- [x] `ORO-TST-003` — P4 — Overlapping organization synchronizations
+  - Done (2026-10-23): With `ORO-SEC-008`.
   - Current state: Missing
   - Evidence: `MessagingFeaturesTest.theChatOfATeamFollowsItsNameAndMembers` runs them one at a time.
   - Action: concurrent and out-of-order synchronizations (`ORO-SEC-008`).

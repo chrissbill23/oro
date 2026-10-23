@@ -5,22 +5,21 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 
 ## Security architecture
 
-### One database login for the API and the workers
+### One process for the API and the workers
 
-- **Today**: `oro_service` is a member of `oro_app` and `oro_system` and picks one per transaction
-  (`context/DbSession.java`).
-- **Why**: one process, one pool, simple to run.
-- **Risk**: a SQL injection or a code bug in the API can take `oro_system`, which reads everything of both products.
-  No injection is known today, but the separation of the roles is weaker than it looks.
-- **Revisit**: now, before launch (`ORO-SEC-001`).
+- **Today**: two logins and two pools in one process (`context/DataSourceConfig.java`, done on 2026-10-23): the API's
+  can never take `oro_system`.
+- **Risk**: a flaw that runs code in the process (not just SQL) still reaches the worker's pool.
+- **Revisit**: when the workers need to scale apart from the API, or before handling data that needs a stronger
+  separation: run them as their own process with only the worker's login.
 
-### Roles enforced by Java, membership by the database
+### The identity of the context is a setting
 
-- **Today**: RLS and triggers decide who is a member and what it may read; who is owner or admin, and who may remove
-  or add members, is checked only in `ConversationService`.
-- **Why**: role rules were simpler to write in Java.
-- **Risk**: the database does not back up the role checks, so one missed check in Java is a privilege escalation.
-- **Revisit**: now (`ORO-SEC-002`).
+- **Today**: RLS and the triggers (roles included, since 2026-10-23) read the identity from `oro.identity_id`, which
+  `DbSession` sets per transaction.
+- **Risk**: any SQL on the API's connection could set another identity; the triggers protect against a bug in the
+  services, the separate logins against `oro_system`, but not against an injection acting as another user.
+- **Revisit**: if an injection is ever found, or when the API moves to per-request database credentials (not planned).
 
 ### Shared HMAC secrets between products
 
@@ -103,11 +102,12 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 - **Risk**: one client that reads slowly holds up delivery for everyone.
 - **Revisit**: now (`ORO-SCL-004`).
 
-### Streams authorized once
+### Stream authorization checked every 30 s
 
-- **Today**: a stream is checked when it opens and lives 30 minutes.
-- **Risk**: presence and events keep flowing after a token expired or an access was revoked.
-- **Revisit**: now (`ORO-SEC-007`).
+- **Today**: a stream ends with its token and closes with the commit of a revocation on this instance
+  (`LiveAuthorization`, since 2026-10-23); a change made elsewhere is found by the check every 30 s.
+- **Risk**: up to 30 s of events and presence after a change made outside the services.
+- **Revisit**: with several instances (`ORO-SCL-006`): the closes must travel with the events.
 
 ### The outbox only feeds the streams
 

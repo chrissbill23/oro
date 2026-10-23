@@ -3,9 +3,9 @@ package com.asata.org.oro.outbox.service;
 import com.asata.org.oro.context.DbSession;
 import com.asata.org.oro.enums.Product;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
@@ -32,11 +32,11 @@ public class OutboxWorker {
     private final OutboxEventHandler handler;
     private final OutboxProperties properties;
 
-    public OutboxWorker(DbSession session, JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
+    public OutboxWorker(DbSession session, @Qualifier("systemJdbcTemplate") JdbcTemplate jdbc,
                         OutboxEventHandler handler, OutboxProperties properties) {
         this.session = session;
         this.jdbc = jdbc;
-        this.tx = new TransactionTemplate(transactionManager);
+        this.tx = session.systemTransaction();
         this.handler = handler;
         this.properties = properties;
     }

@@ -62,9 +62,13 @@ class MessagingApiTest extends PostgresIntegrationTest {
         return mvc.perform(request);
     }
 
+    private long version;
+
+    /** the snapshot with the next version, as Umoja numbers them */
     private ResultActions sync(String json) throws Exception {
+        String versioned = json.replaceFirst("\\{", "{\"version\": " + (++version) + ", ");
         return mvc.perform(put("/internal/organizations/" + ACME).header("x-integration-key", UMOJA_KEY)
-                .contentType(MediaType.APPLICATION_JSON).content(json));
+                .contentType(MediaType.APPLICATION_JSON).content(versioned));
     }
 
     private static String read(ResultActions result, String path) throws Exception {
@@ -89,6 +93,10 @@ class MessagingApiTest extends PostgresIntegrationTest {
     void onlyUmojaSynchronizesItsOrganizations() throws Exception {
         mvc.perform(put("/internal/organizations/" + ACME).header("x-integration-key",
                         "test-oro-integration-key-for-the-tests-0123456789")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"version\": 99, \"memberUserIds\": [], \"teams\": []}"))
+                .andExpect(status().isBadRequest());
+        // a snapshot without its version is refused
+        mvc.perform(put("/internal/organizations/" + ACME).header("x-integration-key", UMOJA_KEY)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"memberUserIds\": [], \"teams\": []}"))
                 .andExpect(status().isBadRequest());
         // a user token is no key: that door knows only the integrations
