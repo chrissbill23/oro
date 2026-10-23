@@ -23,7 +23,7 @@ products share the service, and nothing in it lets one reach the other's users o
 | Path | What |
 |---|---|
 | [`backend/`](backend) | The service: Spring Boot 4.1, Java 25, PostgreSQL 17. **Its [README](backend/README.md) has the full documentation**: API, authentication, schema, security, operations |
-| [`docs/`](docs) | Guides: quick start, connecting Umoja |
+| [`docs/`](docs) | Guides: quick start, connecting Umoja, implementation summary |
 | [`docker-compose.yml`](docker-compose.yml) | Runs the backend, reading its settings from `backend/.env.local` |
 
 The database schema is in the shared database repository, like the rest of Asata:
@@ -34,6 +34,7 @@ development data, and `oro/DROP.sql`).
 
 - [Quick start](docs/quick-start.md): run the database and Oro on Docker.
 - [Connecting Umoja](docs/connecting-umoja.md): how Umoja's frontend and backend use Oro.
+- [Implementation summary](docs/implementation-summary.md): what is built, how it is secured, what is left.
 - [Backend](backend/README.md): API, authentication, schema, security, operations.
 
 ## Status
