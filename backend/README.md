@@ -96,8 +96,9 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction |
 | `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention |
 | `ApiTest` | The HTTP chain with tokens really signed by each product: wrong secret, unknown issuer, expiry; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
-| `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; the list (last message, the other one, unread); mute; rename; reactions (allowed emojis, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
+| `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; the list (last message, the other one, unread); mute; rename; reactions (one emoji, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
 | `MessagingApiTest` | The same over HTTP: the synchronization by the Umoja integration only; list, reactions, search, mute, read positions, typing; a file uploaded (its name cleaned, its size limited), sent, then downloaded by the members only with safe headers |
+| `EmojisTest` | A reaction is one emoji whatever it is (skin tones, flags, ZWJ sequences); never text, digits, keycaps, a lone modifier nor several emojis |
 | `LiveHubTest` | The streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only |
 | `AttachmentTest` | Metadata is visible only to those who can read the message, even with the storage key; downloads need an uploaded and clean file; the API cannot mark a file clean; a sender can attach only their own uploads; a deleted message's files are hidden and marked for purge; file names cannot be paths |
 
@@ -141,7 +142,7 @@ carries an `x-request-id` header.
 | `POST /conversations/{id}/messages` `{clientMessageId, type, body, metadata, attachmentIds}` | 201 stored; 200 when a retry with the same `clientMessageId` returns the stored message |
 | `PUT /messages/{id}` `{body}`, `DELETE /messages/{id}` | The sender edits, or deletes (the content is erased) |
 | `GET /messages/{id}` | A message the caller may read (after a change on its stream) |
-| `PUT`, `DELETE /messages/{id}/reactions/{emoji}` | Gives or takes back a reaction: 👍 ❤️ 😂 🎉 🙌 👀 😮 🙏 ✅ 🔥 |
+| `PUT`, `DELETE /messages/{id}/reactions/{emoji}` | Gives or takes back a reaction: one emoji, any (skin tones, flags and ZWJ sequences included), once per emoji |
 | `GET /search/messages?q=&conversationId=` | The messages the caller may read containing the text, newest first (30 at most) |
 | `PUT /conversations/{id}` `{name, description}` | Owner or admin renames a group (not a team chat) |
 | `PUT /conversations/{id}/mute` `{until}` | Mutes for the caller, `null` unmutes |
@@ -394,6 +395,14 @@ only if the product needs:
 
 Even then, keep the positions for the counts.
 
+### Reactions
+
+A reaction is one emoji of a member on a message it can read, once per (message, member, emoji). The API accepts any
+emoji as Unicode defines them (`Emojis`: its emoji properties, not a list): one grapheme, a pictograph or a flag, with
+its skin tones and ZWJ sequences, 16 UTF-16 units at most. Text, digits, keycaps and several emojis are refused (400).
+The database checks the length and refuses letters, digits, spaces and markup characters. Reactions are gone with
+their message when it is deleted.
+
 ### Attachments
 
 Files live outside the database; PostgreSQL holds only their metadata. The flow with an object storage (not written
@@ -525,6 +534,6 @@ Watch `pg_stat_user_tables` (dead tuples, vacuum times), the index sizes, and th
   clean unscanned.
 - **Jobs not written.** The purge jobs for attachments (deleted ones, uploads never attached) remain to be written.
 - **Moderation and editing.** No moderation deletion by admins (only senders change their messages), no edit history,
-  no threads. Reactions are a fixed list of emojis.
+  no threads.
 - **Send failure edge case.** A unique-key violation on a send (only reachable outside the locking path) surfaces as an
   error rather than as the stored message.
