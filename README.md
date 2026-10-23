@@ -34,6 +34,7 @@ development data, and `oro/DROP.sql`).
 
 - [Quick start](docs/quick-start.md): run the database and Oro on Docker.
 - [Connecting Umoja](docs/connecting-umoja.md): how Umoja's frontend and backend use Oro.
+- [Deployment](docs/deployment.md): production on a server with Docker Compose: secrets, HTTPS, upgrades, rollbacks.
 - [Implementation summary](docs/implementation-summary.md): what is built, how it is secured, what is left.
 - [Backend](backend/README.md): API, authentication, schema, security, operations.
 
@@ -42,9 +43,8 @@ development data, and `oro/DROP.sql`).
 Working: everything listed above. Not done yet:
 
 - Oro's own account system, which would issue its users' tokens.
-- An object storage and a malware scanner for the files (they go to a local disk, recorded clean unscanned).
+- An object storage for the files (they go to a local disk, scanned by ClamAV and backed up with restic).
 - Push notifications.
 - More than one instance (the live streams live in memory).
-- The purge jobs for deleted files.
 
 The details are under [Limitations](backend/README.md#limitations).

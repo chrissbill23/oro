@@ -1,0 +1,55 @@
+# The backend of Oro on every push and pull request: its tests (on PostgreSQL 17 by Testcontainers, built by the schema
+# of the private repository 1_ASATA_DATABASE, read with a read-only deploy key), then its image built.
+name: backend
+
+on:
+  push:
+    branches: [main, "1.0"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # the branch of 1_ASATA_DATABASE with the tables of Oro (develop once it is merged there)
+  ASATA_DATABASE_REF: FA-13-fixes-and-improvements
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: oro
+      # next to oro, as on a developer's machine: the tests read ../../1_ASATA_DATABASE from oro/backend
+      - uses: actions/checkout@v5
+        with:
+          repository: chrissbill23/1_ASATA_DATABASE
+          ref: ${{ env.ASATA_DATABASE_REF }}
+          ssh-key: ${{ secrets.ASATA_DATABASE_DEPLOY_KEY }}
+          path: 1_ASATA_DATABASE
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          cache-dependency-path: oro/backend/pom.xml
+      - name: Tests
+        working-directory: oro/backend
+        run: ./mvnw -B -ntp verify
+      - name: Test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: oro/backend/target/surefire-reports
+          retention-days: 7
+      - name: Image
+        working-directory: oro/backend
+        run: docker build -q -t oro-backend:ci .

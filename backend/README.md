@@ -75,6 +75,7 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | `ORO_MULTIPART_DIR` | the server's temporary directory (`/data/attachments/.incoming` in Docker) | Where an upload is received before it is stored: the data volume, not the disk of the system |
 | `ORO_FILES_BACKUP_PASSWORD` | none | The passphrase of the backups of the files (restic); unset: no backup. Lost, the backups are lost with it |
 | `ORO_FILES_BACKUP_REPOSITORY`, `ORO_FILES_BACKUP_S3_KEY`, `ORO_FILES_BACKUP_S3_SECRET` | a volume | Where the backups of the files go: `s3:<endpoint>/<bucket>/oro-files` and its keys in production |
+| `SPRING_PROFILES_ACTIVE` | none | `production`: the secrets from `/run/secrets` (one file per setting), and a refusal to start on any setting of development (`ProductionChecks`); see `docs/deployment.md` |
 | `ORO_MANAGEMENT_PORT` | `9082` | The actuator (health, `/actuator/prometheus`), never published: Prometheus reads it on the private network |
 | `ORO_LOG_FORMAT` | `ecs` here | The logs as JSON (Elastic Common Schema), the request id in each line; unset outside Docker: plain lines |
 | `ORO_RATE_LIMITS` | `true` | The [rate limits](#rate-limits) of the users; `false` only to measure without them |
@@ -87,7 +88,8 @@ SPRING_DATASOURCE_PASSWORD=oro_api_dev ORO_SYSTEM_DATASOURCE_PASSWORD=oro_worker
   ./mvnw spring-boot:run    # localhost:5433/asata, port 8082; Umoja's keys from localhost:8081
 ```
 
-Never connect as a superuser: superusers bypass RLS. Local settings go in `src/main/resources/application-local.yml`,
+The schema changes of an existing database go through `../../1_ASATA_DATABASE/oro/migrate.sh` (numbered migrations,
+recorded in `oro_schema_version`; `oro/migrations/README.md`). Never connect as a superuser: superusers bypass RLS. Local settings go in `src/main/resources/application-local.yml`,
 which git ignores.
 
 ### Tests
@@ -124,6 +126,9 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `FileTypesTest`, `FileUploadTest` | The type comes from the bytes: a page declared as an image is downloaded, never shown; a photo is stored without its metadata; a broken image is refused |
 | `MalwareScanTest` | Against a clamd of the test: clean files downloadable, EICAR refused and deleted, nothing downloadable while clamd is away then scanned, a file clamd cannot read never downloadable |
 | `MetricsTest` | Prometheus reads Oro without a token: the gauges follow the database (the outbox), the sends are timed, the lock waits and the refused requests counted |
+| `MigrationTest` | The runner of the schema: a new database, migrations applied once in the order of their numbers and recorded, an applied one changed or a failing one stops it and leaves nothing, the migrations of before recorded as included in a new database |
+| `ProductionChecksTest` | Production refuses the settings of development, all at once, naming them without their values |
+| `RequestSizeTest` | A request that is not an upload carries 1 MiB at most, with a length or without |
 | `RateLimiterTest` | A bucket: the burst, then the rate, the wait until the next request; never more than the burst; the idle buckets go |
 | `RateLimitTest` | Over HTTP: 429 with `Retry-After` and nothing created; the other kinds and the other users are not limited by it; every request counts in `any` |
 | `JwkSetUriTest` | The public keys are read from where the product publishes them, at the first token then for a new `kid`: a rotation needs no restart; an unpublished key is refused |

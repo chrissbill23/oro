@@ -1,0 +1,15 @@
+# The production profile (SPRING_PROFILES_ACTIVE=production): the secrets from files, one per setting, named after it
+# (Docker secrets in /run/secrets: spring.datasource.password, oro.system-datasource.password,
+# oro.security.products.UMOJA.integration-keys...), never in the environment nor an image. ProductionChecks refuses to
+# start on a setting of development.
+spring:
+  config:
+    import: optional:configtree:/run/secrets/
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+oro:
+  attachments:
+    scan: clamav

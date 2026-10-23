@@ -473,7 +473,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: the drill itself, with `SchemaScriptTest`-like checks on the restored database
 
-- [ ] `ORO-LCH-008` — P1 — Secrets in a secret store, no development fallbacks in production
+- [x] `ORO-LCH-008` — P1 — Secrets in a secret store, no development fallbacks in production
+  - Done (2026-10-23): The production profile: the secrets as Docker secret files (`spring.config.import: configtree:/run/secrets/`), and `ProductionChecks` refuses a placeholder or short password, no ClamAV, the API description, rate limits off, a non-HTTPS origin, the actuator on the API's port, Umoja without its key; checked with the real image. `docker-compose.production.yml` in the three repositories: no development default, no seed of development, nothing published but Caddy; `production-logins.sql` reads the passwords of the logins from secret files. Tested: `ProductionChecksTest`.
   - Current state: Partially implemented (secrets come from the environment, `.env.local` is ignored by git)
   - Evidence: `oro/backend/docker-compose.yml` falls back to `ORO_DB_PASSWORD:-oro_service_dev`;
     `application.yml` defaults secrets to empty (that door closed, which is safe).
@@ -487,7 +488,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: a startup test of the production profile
 
-- [ ] `ORO-LCH-009` — P1 — Versioned schema changes and a rollback procedure
+- [x] `ORO-LCH-009` — P1 — Versioned schema changes and a rollback procedure
+  - Done (2026-10-23): `1_ASATA_DATABASE/oro/migrate.sh`: the schema for a new database, numbered migrations (`oro/migrations/`) for an existing one, once each in a transaction, recorded with their checksum in `oro_schema_version`; expand then contract (`oro/migrations/README.md`); rollbacks in `docs/deployment.md`. Tested: `MigrationTest`; run on the local database.
   - Current state: Partially implemented (one idempotent script that adds what is missing)
   - Evidence: `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql` (`CREATE … IF NOT EXISTS`, policies dropped and created);
     no record of which version a database has. An idempotent script cannot change an existing column or constraint.
@@ -567,7 +569,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: an end-to-end test: cut the stream, send, reconnect
 
-- [ ] `ORO-LCH-015` — P1 — Production edge: HTTPS, CORS, sizes, timeouts
+- [x] `ORO-LCH-015` — P1 — Production edge: HTTPS, CORS, sizes, timeouts
+  - Done (2026-10-23): Caddy 2.11.6 in front of Umoja (`umoja/deploy/Caddyfile`): HTTPS by Let's Encrypt, HSTS and security headers, the streams unbuffered; nginx trusts the forwarded address from Caddy's network only and limits /oro/ to 1 MiB (101 MB for the uploads); Oro limits its JSON bodies itself (`RequestSizeFilter`); the database and Oro publish nothing in production. Tested: `RequestSizeTest`; checked locally. Left: the external TLS check once deployed.
   - Current state: Partially implemented (development values)
   - Evidence: `application.yml` (`cors-allowed-origins` defaults to localhost), `umoja/frontend/docker/nginx.conf.template`
     (`client_max_body_size 101m`, `proxy_read_timeout 1h`), `1_ASATA_DATABASE/docker-compose.yml` publishes 5433 on all
@@ -593,7 +596,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: the dry runs
 
-- [ ] `ORO-LCH-017` — P1 — Continuous integration
+- [x] `ORO-LCH-017` — P1 — Continuous integration
+  - Done (2026-10-23): `.github/workflows/backend.yml`: the tests and the image on every push to main and 1.0 and every pull request, the schema read from 1_ASATA_DATABASE with a read-only deploy key (`ASATA_DATABASE_DEPLOY_KEY`). Left: a branch protection on main that requires it.
   - Current state: Missing (no `.github/workflows` in `oro`)
   - Evidence: `oro/` has no CI configuration; the tests need Docker.
   - Action: a GitHub Actions workflow that runs `./mvnw verify` with Docker on each push and pull request, with the
@@ -916,7 +920,7 @@ below are scenarios that are not covered.
   - Launch impact: Blocker
   - Verification: CI
 
-- [ ] `ORO-TST-009` — P4 — Migrations on a clean database and on the previous version
+- [x] `ORO-TST-009` — P4 — Migrations on a clean database and on the previous version
   - Current state: Partially implemented (`SchemaScriptTest` runs the script twice)
   - Evidence: `oro/backend/src/test/java/com/asata/org/oro/schema/SchemaScriptTest.java`.
   - Action: build from the migrations; upgrade a database at the previous version with data; compare schemas.

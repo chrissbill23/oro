@@ -43,6 +43,12 @@ public class HttpExceptionHandler {
             MethodArgumentTypeMismatchException.class, MissingServletRequestParameterException.class,
             MissingRequestHeaderException.class})
     public ResponseEntity<ErrorDTO> badRequest(Exception e, HttpServletRequest request) {
+        // a body cut at its limit while it was read (RequestSizeFilter): too large, not malformed
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof PayloadTooLarge tooLarge) {
+                return payloadTooLarge(tooLarge, request);
+            }
+        }
         String message = e instanceof IllegalArgumentException ? e.getMessage() : "The request is malformed";
         return error(request, HttpStatus.BAD_REQUEST, message, null);
     }

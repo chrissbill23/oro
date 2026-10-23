@@ -1,0 +1,52 @@
+# Oro in production, on a server with Docker Compose: over docker-compose.yml,
+#   docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+# The production profile (ProductionChecks refuses a setting of development), the secrets as files (secrets/, git
+# ignored, mode 600: one per secret, see deploy/README.md), nothing published: the browsers reach Oro through the proxy
+# of a product (Umoja's nginx, behind Caddy), Prometheus and Alertmanager on 127.0.0.1 only (an SSH tunnel).
+services:
+  oro:
+    # the environment of production only: no development default (a password in an environment would win over the
+    # secret files)
+    environment: !override
+      SPRING_PROFILES_ACTIVE: production
+      SPRING_DATASOURCE_URL: jdbc:postgresql://asata-postgres:5432/asata
+      SPRING_DATASOURCE_USERNAME: oro_api
+      ORO_SYSTEM_DATASOURCE_USERNAME: oro_worker
+      ORO_OUTBOX_ENABLED: "true"
+      ORO_API_DOCS: "false"
+      UMOJA_JWKS_URI: http://umoja:8080/umoja/.well-known/jwks.json
+      ORO_CORS_ALLOWED_ORIGINS: ${ORO_CORS_ALLOWED_ORIGINS:?the HTTPS origins of the products, e.g. https://umoja.example.org}
+      ORO_MULTIPART_DIR: /data/attachments/.incoming
+      ORO_ATTACHMENTS_SCAN: clamav
+      ORO_CLAMAV_HOST: clamav
+      ORO_FILES_BACKUP_STATUS: /backup-status/last-success
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+    secrets:
+      - source: oro_api_db_password
+        target: spring.datasource.password
+      - source: oro_worker_db_password
+        target: oro.system-datasource.password
+      - source: umoja_integration_keys
+        target: oro.security.products.UMOJA.integration-keys
+    ports: !reset []
+    restart: unless-stopped
+  files-backup:
+    environment: !override
+      RESTIC_REPOSITORY: ${ORO_FILES_BACKUP_REPOSITORY:?the bucket off the host, s3:<endpoint>/<bucket>/oro-files}
+      RESTIC_PASSWORD_FILE: /run/secrets/files_backup_password
+      AWS_ACCESS_KEY_ID: ${ORO_FILES_BACKUP_S3_KEY:?}
+      AWS_SECRET_ACCESS_KEY: ${ORO_FILES_BACKUP_S3_SECRET:?}
+      FILES_BACKUP_INTERVAL: "3600"
+    secrets:
+      - files_backup_password
+
+secrets:
+  oro_api_db_password:
+    file: ./secrets/oro_api_db_password
+  oro_worker_db_password:
+    file: ./secrets/oro_worker_db_password
+  # name:sha256 of each key, comma separated (never the keys)
+  umoja_integration_keys:
+    file: ./secrets/umoja_integration_keys
+  files_backup_password:
+    file: ./secrets/files_backup_password

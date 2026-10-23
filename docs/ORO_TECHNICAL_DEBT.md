@@ -140,13 +140,14 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 
 ## Operations
 
-### One idempotent schema script
+### A schema script and a small runner, no migration tool
 
-- **Today**: `CREATE_ORO_TABLES.sql` adds what is missing and runs again safely.
-- **Why**: simple, no migration tool (a decision, kept).
-- **Risk**: it cannot change an existing column or constraint, and nothing records which version a database has.
-- **Revisit**: before the first deployment (`ORO-LCH-009`): numbered SQL scripts and a version table, still no
-  Flyway.
+- **Today**: `CREATE_ORO_TABLES.sql` builds a new database; numbered migrations, run by `oro/migrate.sh` and recorded
+  in `oro_schema_version`, change an existing one (since 2026-10-23).
+- **Risk**: a change must be written twice (the schema and a migration); one runner at a time, by hand or in a
+  deployment step; the products other than Oro still have no versioning.
+- **Revisit**: when two people change the schema at once often, or when Mokili and Umoja need the same: a tool
+  (Flyway, Liquibase) for the whole database.
 
 ### The shared Asata database
 
