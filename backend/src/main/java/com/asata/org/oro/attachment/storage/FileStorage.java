@@ -16,6 +16,10 @@ public interface FileStorage {
 
     void delete(String key) throws IOException;
 
+    /** refuses (ServiceUnavailable) a file of this size when the storage is short of space; nothing by default */
+    default void requireSpace(long bytes) {
+    }
+
     /** what was stored: the real size and checksum, which the database records (not the ones the client said) */
     record Stored(long sizeBytes, String sha256) {
     }

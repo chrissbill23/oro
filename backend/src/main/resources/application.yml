@@ -17,6 +17,9 @@ spring:
       # oro.attachments.max-size-bytes, and a little for the form
       max-file-size: 100MB
       max-request-size: 101MB
+      # where an upload is received before it is stored: the data volume (ORO_MULTIPART_DIR), not the disk of the
+      # system; unset: the temporary directory of the server. Deleted after each request
+      location: ${ORO_MULTIPART_DIR:}
   mvc:
     async:
       # the streams (Server-Sent Events) end by themselves (LiveHub.STREAM_TIMEOUT)
@@ -126,6 +129,15 @@ oro:
     # none: no malware scanner, a file is recorded clean unscanned (development only); anything else: the files stay
     # pending (not downloadable) until a scanner records its result
     scan: ${ORO_ATTACHMENTS_SCAN:none}
+    # what a user may upload: the bytes of its files not deleted, its files of the last 24 hours (413, 429 beyond)
+    quota:
+      bytes-per-user: ${ORO_ATTACHMENTS_QUOTA_BYTES:1073741824}
+      files-per-day: ${ORO_ATTACHMENTS_QUOTA_FILES_PER_DAY:200}
+    # the local storage keeps this much of its disk free (503 beyond)
+    local-min-free-bytes: ${ORO_ATTACHMENTS_MIN_FREE_BYTES:1073741824}
   live:
     # a comment on every stream, so that the proxies keep them open
     heartbeat: PT25S
+    # the streams of a user (its tabs and devices), and of this instance: the next one is refused (429, 503)
+    max-streams-per-user: 5
+    max-streams: 10000

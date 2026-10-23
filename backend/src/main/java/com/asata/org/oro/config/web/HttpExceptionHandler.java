@@ -2,6 +2,8 @@ package com.asata.org.oro.config.web;
 
 import com.asata.org.oro.dto.ErrorDTO;
 import com.asata.org.oro.exception.Conflict;
+import com.asata.org.oro.exception.PayloadTooLarge;
+import com.asata.org.oro.exception.ServiceUnavailable;
 import com.asata.org.oro.exception.TooManyRequests;
 import com.asata.org.oro.exception.Forbidden;
 import com.asata.org.oro.exception.NotFound;
@@ -78,6 +80,18 @@ public class HttpExceptionHandler {
         ResponseEntity<ErrorDTO> error = error(request, HttpStatus.TOO_MANY_REQUESTS, e.getMessage(), null);
         return ResponseEntity.status(error.getStatusCode()).header(HttpHeaders.RETRY_AFTER, Long.toString(e.getRetryAfterSeconds()))
                 .body(error.getBody());
+    }
+
+    @ExceptionHandler(ServiceUnavailable.class)
+    public ResponseEntity<ErrorDTO> serviceUnavailable(ServiceUnavailable e, HttpServletRequest request) {
+        ResponseEntity<ErrorDTO> error = error(request, HttpStatus.SERVICE_UNAVAILABLE, e.getMessage(), null);
+        return ResponseEntity.status(error.getStatusCode()).header(HttpHeaders.RETRY_AFTER, Long.toString(e.getRetryAfterSeconds()))
+                .body(error.getBody());
+    }
+
+    @ExceptionHandler(PayloadTooLarge.class)
+    public ResponseEntity<ErrorDTO> payloadTooLarge(PayloadTooLarge e, HttpServletRequest request) {
+        return error(request, HttpStatus.CONTENT_TOO_LARGE, e.getMessage(), null);
     }
 
     @ExceptionHandler(Conflict.class)

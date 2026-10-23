@@ -1,11 +1,13 @@
 package com.asata.org.oro.attachment.storage;
 
+import com.asata.org.oro.exception.ServiceUnavailable;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -30,9 +32,13 @@ public class LocalFileStorage implements FileStorage {
     private static final Pattern KEY = Pattern.compile("[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*");
 
     private final Path root;
+    /** the disk keeps this much free, whatever comes: the database, the logs and the system share it */
+    private final long minFreeBytes;
 
-    public LocalFileStorage(@Value("${oro.attachments.local-dir:./data/attachments}") String directory) throws IOException {
+    public LocalFileStorage(@Value("${oro.attachments.local-dir:./data/attachments}") String directory,
+                            @Value("${oro.attachments.local-min-free-bytes:1073741824}") long minFreeBytes) throws IOException {
         this.root = Path.of(directory).toAbsolutePath().normalize();
+        this.minFreeBytes = minFreeBytes;
         Files.createDirectories(root);
         log.info("attachments stored in {}", root);
     }
@@ -59,6 +65,20 @@ public class LocalFileStorage implements FileStorage {
             return new Stored(size, HexFormat.of().formatHex(sha256.digest()));
         } finally {
             Files.deleteIfExists(partial);
+        }
+    }
+
+    @Override
+    public void requireSpace(long bytes) {
+        long usable;
+        try {
+            usable = Files.getFileStore(root).getUsableSpace();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        if (usable - bytes < minFreeBytes) {
+            log.error("attachment refused: {} bytes usable on the disk of the attachments, {} kept free", usable, minFreeBytes);
+            throw new ServiceUnavailable("The storage of the files is full, try again later", 600);
         }
     }
 

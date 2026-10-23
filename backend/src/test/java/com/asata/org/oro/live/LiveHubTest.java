@@ -161,4 +161,32 @@ class LiveHubTest {
         assertThat(jordanGlobex.ofType("presence")).isEmpty();
         assertThat(amara.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "jordan", "online", false));
     }
+
+    /** five streams a user: the sixth is refused, the five keep going; the instance has its own cap */
+    @Test
+    void theStreamsOfAUserAndOfTheInstanceAreBounded() {
+        UUID jordan = UUID.randomUUID();
+        List<RecordingEmitter> tabs = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            tabs.add(connect(jordan, "jordan", ACME));
+        }
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> connect(jordan, "jordan", ACME))
+                .isInstanceOf(com.asata.org.oro.exception.TooManyRequests.class);
+        // in another organization too: a user's streams, all of them
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> connect(jordan, "jordan", GLOBEX))
+                .isInstanceOf(com.asata.org.oro.exception.TooManyRequests.class);
+        assertThat(hub.openStreams()).isEqualTo(5);
+        assertThat(tabs).allSatisfy(tab -> assertThat(tab.ofType("reconnect")).isEmpty());
+        // one closed: one may open
+        hub.close(jordan, ACME);
+        assertThat(hub.openStreams()).isZero();
+        connect(jordan, "jordan", ACME);
+
+        hub.setMaxStreams(3);
+        connect(UUID.randomUUID(), "amara", ACME);
+        connect(UUID.randomUUID(), "kwame", ACME);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> connect(UUID.randomUUID(), "bob", GLOBEX))
+                .isInstanceOf(com.asata.org.oro.exception.ServiceUnavailable.class);
+        assertThat(hub.openStreams()).isEqualTo(3);
+    }
 }

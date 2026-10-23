@@ -1,6 +1,7 @@
 package com.asata.org.oro.attachment.api;
 
 import com.asata.org.oro.attachment.entity.Attachment;
+import com.asata.org.oro.attachment.service.AttachmentQuota;
 import com.asata.org.oro.attachment.service.AttachmentService;
 import com.asata.org.oro.attachment.storage.FileStorage;
 import com.asata.org.oro.context.Actor;
@@ -40,14 +41,16 @@ public class AttachmentController implements AttachmentApi {
     private static final Pattern MIME = Pattern.compile("[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*");
 
     private final AttachmentService attachments;
+    private final AttachmentQuota quota;
     private final ObjectProvider<FileStorage> storage;
     private final long maxSizeBytes;
     private final boolean scanless;
 
-    public AttachmentController(AttachmentService attachments, ObjectProvider<FileStorage> storage,
+    public AttachmentController(AttachmentService attachments, AttachmentQuota quota, ObjectProvider<FileStorage> storage,
                                 @Value("${oro.attachments.max-size-bytes:104857600}") long maxSizeBytes,
                                 @Value("${oro.attachments.scan:none}") String scan) {
         this.attachments = attachments;
+        this.quota = quota;
         this.storage = storage;
         this.maxSizeBytes = maxSizeBytes;
         this.scanless = "none".equals(scan);
@@ -59,6 +62,9 @@ public class AttachmentController implements AttachmentApi {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("The file is empty");
         }
+        // before anything is registered or stored: the quota of the user, then the space of the storage
+        quota.check(actor.identityId(), file.getSize());
+        files.requireSpace(file.getSize());
         Attachment attachment = attachments.register(actor, conversationId, fileName(file.getOriginalFilename()),
                 mimeType(file.getContentType()), file.getSize());
         FileStorage.Stored stored;

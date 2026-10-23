@@ -2,6 +2,8 @@ package com.asata.org.oro.live;
 
 import com.asata.org.oro.context.Actor;
 import com.asata.org.oro.enums.Product;
+import com.asata.org.oro.exception.ServiceUnavailable;
+import com.asata.org.oro.exception.TooManyRequests;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -49,6 +51,22 @@ public class LiveHub {
         return thread;
     });
     private final Clock clock;
+    /** the streams open on this instance, all users together */
+    private final java.util.concurrent.atomic.AtomicInteger open = new java.util.concurrent.atomic.AtomicInteger();
+    /** a user's streams at most (its tabs and devices): the next is refused, never one closed for it */
+    private int maxStreamsPerUser = 5;
+    /** the streams of this instance at most: the next gets 503 */
+    private int maxStreams = 10_000;
+
+    @org.springframework.beans.factory.annotation.Value("${oro.live.max-streams-per-user:5}")
+    void setMaxStreamsPerUser(int maxStreamsPerUser) {
+        this.maxStreamsPerUser = maxStreamsPerUser;
+    }
+
+    @org.springframework.beans.factory.annotation.Value("${oro.live.max-streams:10000}")
+    void setMaxStreams(int maxStreams) {
+        this.maxStreams = maxStreams;
+    }
 
     public LiveHub() {
         this(Clock.systemUTC());
@@ -81,7 +99,16 @@ public class LiveHub {
      * a new stream of the actor, until its token expires (30 minutes at most): it first gets who is online, and the
      * others of its scope learn it is
      */
-    public SseEmitter connect(Actor actor, String userId, Instant tokenExpiresAt) {
+    public synchronized SseEmitter connect(Actor actor, String userId, Instant tokenExpiresAt) {
+        // the limits first: a refused stream is never opened. Refusing the new one, not closing an old one: a closed
+        // stream reconnects, and would close another, and so on
+        if (connections.getOrDefault(actor.identityId(), Set.of()).size() >= maxStreamsPerUser) {
+            throw new TooManyRequests("Too many streams open for this user (" + maxStreamsPerUser + ")", 30);
+        }
+        if (open.get() >= maxStreams) {
+            log.warn("stream refused: {} streams open on this instance, the most it takes", open.get());
+            throw new ServiceUnavailable("Too many streams open, try again later", 30);
+        }
         Instant now = clock.instant();
         Instant expiresAt = tokenExpiresAt == null || tokenExpiresAt.isAfter(now.plus(STREAM_TIMEOUT))
                 ? now.plus(STREAM_TIMEOUT) : tokenExpiresAt;
@@ -91,6 +118,7 @@ public class LiveHub {
         Connection connection = new Connection(emitter, actor.identityId(), userId, scope, expiresAt);
         boolean first = !isOnline(actor.identityId(), scope);
         connections.computeIfAbsent(actor.identityId(), id -> new CopyOnWriteArraySet<>()).add(connection);
+        open.incrementAndGet();
         Runnable close = () -> disconnect(connection);
         emitter.onCompletion(close);
         emitter.onTimeout(close);
@@ -120,6 +148,11 @@ public class LiveHub {
                 }
             }
         }
+    }
+
+    /** the streams open on this instance */
+    int openStreams() {
+        return open.get();
     }
 
     /** who has a stream open, in which scope */
@@ -223,6 +256,7 @@ public class LiveHub {
         if (set == null || !set.remove(connection)) {
             return;
         }
+        open.decrementAndGet();
         connections.computeIfPresent(connection.identityId(), (id, rest) -> rest.isEmpty() ? null : rest);
         if (!isOnline(connection.identityId(), connection.scope())) {
             presence(connection, false);

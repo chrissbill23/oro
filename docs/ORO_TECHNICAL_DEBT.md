@@ -121,6 +121,14 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 - **Risk**: live events retried after minutes are useless; `failed` events have no alert yet.
 - **Revisit**: now for the alert and a time-to-live (`ORO-LCH-013`); with push for deduplication (`ORO-SCL-010`).
 
+### Quotas count abandoned uploads
+
+- **Today**: the storage quota of a user counts every file not deleted, the uploads never attached to a message
+  included, until the purge job removes them (`ORO-LCH-006`, not written); two uploads at the same moment may both
+  pass the quota.
+- **Risk**: a user whose uploads failed may find its quota full; a quota overshoot of one file.
+- **Revisit**: with the purge job (abandoned uploads gone after 24 h), or when users report it.
+
 ### Files through the API on a local disk
 
 - **Today**: `LocalFileStorage`; uploads and downloads stream through the API; no scanner.

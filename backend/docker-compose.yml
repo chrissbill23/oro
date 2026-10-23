@@ -32,6 +32,8 @@ services:
       ORO_INTEGRATION_KEYS: ${ORO_INTEGRATION_KEYS:-}
       UMOJA_INTEGRATION_KEYS: ${UMOJA_INTEGRATION_KEYS:-}
       ORO_CORS_ALLOWED_ORIGINS: ${ORO_CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://localhost:4201}
+      # the uploads are received on the volume of the attachments, not on the disk of the container
+      ORO_MULTIPART_DIR: /data/attachments/.incoming
     volumes:
       # the files of the attachments (local storage), kept across rebuilds
       - attachments:/data/attachments

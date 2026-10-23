@@ -68,6 +68,9 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | `ORO_STORAGE_PROVIDER` | `local` | Where the files of the attachments go: `local` (a disk, `ORO_ATTACHMENTS_DIR`); another provider needs its `FileStorage`, until then nothing can be uploaded |
 | `ORO_ATTACHMENTS_DIR` | `./data/attachments` (`/data/attachments` in Docker, a volume) | The directory of the local storage |
 | `ORO_ATTACHMENTS_SCAN` | `none` | `none`: no malware scanner, a file is recorded clean unscanned (**development only**); anything else: the files stay pending, not downloadable, until a scanner records its result |
+| `ORO_ATTACHMENTS_QUOTA_BYTES`, `ORO_ATTACHMENTS_QUOTA_FILES_PER_DAY` | `1073741824` (1 GiB), `200` | What a user may upload: the bytes of its files not deleted, its files of the last 24 hours (413, 429 beyond) |
+| `ORO_ATTACHMENTS_MIN_FREE_BYTES` | `1073741824` | The local storage keeps this much of its disk free (503 beyond) |
+| `ORO_MULTIPART_DIR` | the server's temporary directory (`/data/attachments/.incoming` in Docker) | Where an upload is received before it is stored: the data volume, not the disk of the system |
 | `ORO_RATE_LIMITS` | `true` | The [rate limits](#rate-limits) of the users; `false` only to measure without them |
 | `ORO_CORS_ALLOWED_ORIGINS` | `http://localhost:4200,http://localhost:4201` | Browser origins allowed to call the API |
 
@@ -104,10 +107,12 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; a late snapshot never brings back a revoked access, and concurrent synchronizations end as the newest; the list (last message, the other one, unread); mute; rename; reactions (one emoji, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
 | `MessagingApiTest` | The same over HTTP: the synchronization by the Umoja integration only; list, reactions, search, mute, read positions, typing; a file uploaded (its name cleaned, its size limited), sent, then downloaded by the members only with safe headers |
 | `EmojisTest` | A reaction is one emoji whatever it is (skin tones, flags, ZWJ sequences); never text, digits, keycaps, a lone modifier nor several emojis |
-| `LiveHubTest` | The streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only; a stream ends with its token (30 minutes at most) with `reconnect`; closed by identity or organization, offline after |
+| `LiveHubTest` | Five streams per user, the sixth refused and none closed for it; a cap per instance; the streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only; a stream ends with its token (30 minutes at most) with `reconnect`; closed by identity or organization, offline after |
 | `LiveAuthorizationTest` | Revocation, suspension and deactivation close the streams with their commit; the periodic check closes what changed elsewhere; a stream lasts as long as its token |
 | `IntegrationKeyTest` | During a rotation both keys open `/internal`; the logs name the key used, never the key; a key not listed, a short one or the stored hash itself is refused |
 | `IntegrationKeysConfigTest` | The keys are configured as `name:sha256` only: the key itself, a name twice or a key for two products is refused |
+| `StorageQuotaTest` | The bytes of a user are bounded (413) and given back by a deletion; the files of a day are bounded (429), deleted or not; nothing is stored when refused |
+| `LocalFileStorageSpaceTest` | An upload that would eat into the free space kept on the disk is refused (503) |
 | `RateLimiterTest` | A bucket: the burst, then the rate, the wait until the next request; never more than the burst; the idle buckets go |
 | `RateLimitTest` | Over HTTP: 429 with `Retry-After` and nothing created; the other kinds and the other users are not limited by it; every request counts in `any` |
 | `JwkSetUriTest` | The public keys are read from where the product publishes them, at the first token then for a new `kid`: a rotation needs no restart; an unpublished key is refused |
@@ -202,6 +207,15 @@ the costly or noisy ones from their own bucket too. Over a limit: 429 with `Retr
 | `add-member` | `POST /conversations/{id}/members` | 30 | 20 |
 | `upload` | `POST /conversations/{id}/attachments` | 10 | 5 |
 | `stream` | `GET /stream` | 10 | 5 |
+
+Open streams are bounded too: 5 per user (its tabs and devices), 10,000 per instance (`oro.live.max-streams-*`). The
+next one is refused, 429 for the user and 503 for the instance, and no open stream is closed for it: a closed one would
+reconnect and close another. The refused tab keeps up by polling.
+
+Uploads have a quota per user, checked before anything is received into the storage (`AttachmentQuota`, as
+`oro_system`: the conversations it left count too): 1 GiB of files not deleted (413 beyond) and 200 files in 24 hours,
+deleted or not (429 beyond). The local storage keeps 1 GiB of its disk free (503 beyond, logged as an error). An upload
+is received on the data volume (`ORO_MULTIPART_DIR`) and its temporary file deleted after the request.
 
 The integrations (`/internal`) are trusted and not limited. In front, the proxy of a product limits each address
 (Umoja's nginx: 50 a second, bursts of 200, generous because an office behind one address is many users). With several

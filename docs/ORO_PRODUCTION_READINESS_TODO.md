@@ -275,7 +275,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: `MessagingApiTest` cases for 429; load test `ORO-SCL-007` shows the limits hold
 
-- [ ] `ORO-SEC-011` — P0 — Limit the streams per identity and in total
+- [x] `ORO-SEC-011` — P0 — Limit the streams per identity and in total
+  - Done (2026-10-23): 5 streams per user, 10,000 per instance (`LiveHub`, `oro.live.max-streams-*`): the next is refused (429, 503), none closed for it, since a closed stream reconnects and would close another. Checked on the local stack. Tested: `LiveHubTest.theStreamsOfAUserAndOfTheInstanceAreBounded`.
   - Current state: Missing
   - Evidence: `LiveHub.connect` accepts any number of streams per identity; each holds a connection for 30 minutes.
   - Action: at most N streams per identity (5), oldest closed first; a global cap with 503 beyond it.
@@ -285,7 +286,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: `LiveHubTest`
 
-- [ ] `ORO-SEC-012` — P0 — Storage quotas and protection of the disk
+- [x] `ORO-SEC-012` — P0 — Storage quotas and protection of the disk
+  - Done (2026-10-23): `AttachmentQuota`: 1 GiB of files not deleted per user (413) and 200 files in 24 hours, deleted or not (429), checked as `oro_system` before anything is stored; index `idx_oro_attachment_uploader`. `LocalFileStorage.requireSpace` keeps 1 GiB free (503). Uploads are received on the data volume (`ORO_MULTIPART_DIR`). Tested: `StorageQuotaTest`, `LocalFileStorageSpaceTest`. Abandoned uploads count until the purge of `ORO-LCH-006`.
   - Current state: Missing
   - Evidence: `AttachmentController.upload` (100 MiB per file, `oro.attachments.max-size-bytes`), no quota per
     identity or conversation; `spring.servlet.multipart` buffers uploads in the default temporary directory.
