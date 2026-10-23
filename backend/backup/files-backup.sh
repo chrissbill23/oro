@@ -1,0 +1,21 @@
+#!/bin/sh
+# The backups of the files of the attachments (the service files-backup of docker-compose.yml), with restic: encrypted,
+# deduplicated snapshots of /data/attachments (the uploads being received aside), every FILES_BACKUP_INTERVAL seconds
+# (an hour); 24 hourly and 14 daily kept, the window of the database's. Without RESTIC_PASSWORD it makes none.
+set -u
+interval="${FILES_BACKUP_INTERVAL:-3600}"
+if [ -z "${RESTIC_PASSWORD:-}" ]; then
+    echo "files-backup: ORO_FILES_BACKUP_PASSWORD unset: no backup is made, never in clear" >&2
+    exec sleep infinity
+fi
+restic cat config >/dev/null 2>&1 || restic init || exit 1
+while true; do
+    if restic backup --quiet --tag oro-attachments --exclude /data/attachments/.incoming /data/attachments; then
+        echo "files-backup: snapshot done"
+        restic forget --quiet --tag oro-attachments --keep-hourly 24 --keep-daily 14 --prune \
+            || echo "files-backup: forget FAILED" >&2
+    else
+        echo "files-backup: snapshot FAILED" >&2
+    fi
+    sleep "$interval"
+done

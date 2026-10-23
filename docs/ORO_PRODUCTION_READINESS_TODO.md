@@ -459,7 +459,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: `AttachmentTest` with the clock moved forward
 
-- [ ] `ORO-LCH-007` — P1 — Backups, point-in-time recovery and a restore drill
+- [x] `ORO-LCH-007` — P1 — Backups, point-in-time recovery and a restore drill
+  - Done (2026-10-23): pgBackRest 2.59.3 in the image of the shared database: WAL archived every minute, a full backup a week and a differential a day (the service `backup`), two full kept, AES-256 with `PGBACKREST_CIPHER_PASS`, a volume here and S3 in production. The files of the attachments by restic 0.19.1 (the service `files-backup`, hourly, encrypted). Drills: `1_ASATA_DATABASE/backup/restore-drill.sh` (a restore to 13:22:24 had the row before and not the one after, 5 s) and `backend/backup/files-restore-check.sh` (identical). Recovery procedures in both READMEs. Still to do: the bucket off the host in production, and an alert on the age of the last backup (`ORO-LCH-010`).
   - Current state: Missing
   - Evidence: `1_ASATA_DATABASE/docker-compose.yml` (a local volume); nothing in the repositories about backups.
   - Action: WAL archiving and base backups (pgBackRest or WAL-G to object storage, encrypted), or a managed
@@ -924,6 +925,7 @@ below are scenarios that are not covered.
   - Verification: CI
 
 - [ ] `ORO-TST-010` — P4 — Automated restore check
+  - Partly done (2026-10-23): the drills exist and were run (`restore-drill.sh`, `files-restore-check.sh`); left: running them weekly on a schedule and alerting on a failure.
   - Current state: Missing
   - Evidence: `ORO-LCH-007`.
   - Action: a script that restores the latest backup into a new container and runs schema and row-count checks.

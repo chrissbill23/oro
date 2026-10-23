@@ -66,9 +66,28 @@ services:
       - clamav-signatures:/var/lib/clamav
     restart: unless-stopped
 
+  # the backups of the files of the attachments (backup/files-backup.sh, restic): every hour, encrypted with
+  # ORO_FILES_BACKUP_PASSWORD (in .env.local; lost, the backups are lost with it). A volume here; in production an S3
+  # bucket off the host: ORO_FILES_BACKUP_REPOSITORY=s3:<endpoint>/<bucket>/oro-files and its keys
+  files-backup:
+    image: restic/restic:0.19.1
+    entrypoint: ["/backup/files-backup.sh"]
+    environment:
+      RESTIC_REPOSITORY: ${ORO_FILES_BACKUP_REPOSITORY:-/repo}
+      RESTIC_PASSWORD: ${ORO_FILES_BACKUP_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${ORO_FILES_BACKUP_S3_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${ORO_FILES_BACKUP_S3_SECRET:-}
+      FILES_BACKUP_INTERVAL: ${ORO_FILES_BACKUP_INTERVAL:-3600}
+    volumes:
+      - attachments:/data/attachments:ro
+      - files-backup-repo:/repo
+      - ./backup:/backup:ro
+    restart: unless-stopped
+
 volumes:
   attachments:
   clamav-signatures:
+  files-backup-repo:
 
 networks:
   # created by ../../1_ASATA_DATABASE/docker-compose.yml

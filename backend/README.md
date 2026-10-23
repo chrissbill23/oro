@@ -73,6 +73,8 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | `ORO_ATTACHMENTS_QUOTA_BYTES`, `ORO_ATTACHMENTS_QUOTA_FILES_PER_DAY` | `1073741824` (1 GiB), `200` | What a user may upload: the bytes of its files not deleted, its files of the last 24 hours (413, 429 beyond) |
 | `ORO_ATTACHMENTS_MIN_FREE_BYTES` | `1073741824` | The local storage keeps this much of its disk free (503 beyond) |
 | `ORO_MULTIPART_DIR` | the server's temporary directory (`/data/attachments/.incoming` in Docker) | Where an upload is received before it is stored: the data volume, not the disk of the system |
+| `ORO_FILES_BACKUP_PASSWORD` | none | The passphrase of the backups of the files (restic); unset: no backup. Lost, the backups are lost with it |
+| `ORO_FILES_BACKUP_REPOSITORY`, `ORO_FILES_BACKUP_S3_KEY`, `ORO_FILES_BACKUP_S3_SECRET` | a volume | Where the backups of the files go: `s3:<endpoint>/<bucket>/oro-files` and its keys in production |
 | `ORO_RATE_LIMITS` | `true` | The [rate limits](#rate-limits) of the users; `false` only to measure without them |
 | `ORO_CORS_ALLOWED_ORIGINS` | `http://localhost:4200,http://localhost:4201` | Browser origins allowed to call the API |
 
@@ -642,7 +644,27 @@ whenever someone who knew a key leaves.
   automatic. A file that will not delete is logged and retried at the next purge.
 - **Reconciliation**: the Umoja integration sends each organization as it is (`PUT /internal/organizations/{id}`) after
   every change and every 10 minutes; Oro revokes what is not listed.
-- **Backups**: they contain message content; encrypt them and keep them only as long as the retention policy allows.
+- **Backups**: the database by pgBackRest (WAL archived every minute, a full backup a week, a differential one a day,
+  two weeks kept, encrypted; see `1_ASATA_DATABASE/README.md`), the files of the attachments by restic (the service
+  `files-backup`: every hour, 24 hourly and 14 daily snapshots kept, encrypted). They hold message content: their
+  passphrases in the vault, apart from them, and a deleted message stays in them for two weeks at most.
+- **Restore drills**: `1_ASATA_DATABASE/backup/restore-drill.sh` (the database, to a point in time) and
+  `backend/backup/files-restore-check.sh` (the files, compared one by one with the volume), every month.
+
+### Recovering Oro
+
+1. The database to the moment chosen (`1_ASATA_DATABASE/README.md`, Recovering the database).
+2. The files from the first snapshot taken at or after that moment, so that every row has its file:
+   ```bash
+   docker compose stop oro
+   docker run --rm -e RESTIC_REPOSITORY=/repo -e RESTIC_PASSWORD -v oro_files-backup-repo:/repo \
+     -v oro_attachments:/data/attachments restic/restic:0.19.1 snapshots --tag oro-attachments    # pick one
+   docker run --rm -e RESTIC_REPOSITORY=/repo -e RESTIC_PASSWORD -v oro_files-backup-repo:/repo \
+     -v oro_attachments:/data/attachments restic/restic:0.19.1 restore <snapshot> --target /
+   docker compose up -d
+   ```
+3. The files newer than the database (sent after the moment chosen) have no row: the daily purge of the files without
+   an attachment removes them.
 
 ## Limitations
 
