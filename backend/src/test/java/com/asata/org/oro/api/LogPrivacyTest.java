@@ -46,13 +46,18 @@ class LogPrivacyTest extends PostgresIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"userId\":\"oro-baraka\"}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(), "$.id");
 
-        // the metadata is over the 8 KB of the database: the check constraint refuses the whole row
+        // a check constraint of the test refuses the row (the API refuses before the database what it can): PostgreSQL
+        // puts the whole failing row in its error, which must not reach the logs
         String secret = "PRIVATE-WORDS-" + java.util.UUID.randomUUID();
-        String send = "{\"clientMessageId\":\"client-0001\",\"type\":\"TEXT\",\"body\":\"%s\",\"metadata\":{\"note\":\"%s\"}}"
-                .formatted(secret, "x".repeat(9000));
-        mvc.perform(post("/conversations/" + direct + "/messages").header(HttpHeaders.AUTHORIZATION, "Bearer " + amani)
-                .contentType(MediaType.APPLICATION_JSON).content(send)).andExpect(status().isConflict());
+        admin.execute("ALTER TABLE oro_message ADD CONSTRAINT ck_oro_message_log_probe CHECK (body NOT LIKE 'PRIVATE-WORDS-%') NOT VALID");
+        try {
+            String send = "{\"clientMessageId\":\"client-0001\",\"type\":\"TEXT\",\"body\":\"%s\"}".formatted(secret);
+            mvc.perform(post("/conversations/" + direct + "/messages").header(HttpHeaders.AUTHORIZATION, "Bearer " + amani)
+                    .contentType(MediaType.APPLICATION_JSON).content(send)).andExpect(status().isConflict());
+        } finally {
+            admin.execute("ALTER TABLE oro_message DROP CONSTRAINT ck_oro_message_log_probe");
+        }
 
-        assertThat(output.getAll()).contains("ck_oro_message").doesNotContain(secret).doesNotContain("Failing row");
+        assertThat(output.getAll()).contains("ck_oro_message_log_probe").doesNotContain(secret).doesNotContain("Failing row");
     }
 }

@@ -47,6 +47,8 @@ public class OroMetrics {
             Gauge.builder("oro." + name, database, values -> values.get().getOrDefault(name, Double.NaN)).register(registry);
         }
         Gauge.builder("oro.streams.open", hub, LiveHub::openStreams).description("streams open on this instance").register(registry);
+        io.micrometer.core.instrument.FunctionCounter.builder("oro.streams.ended.slow", hub, LiveHub::streamsEndedSlow)
+                .description("streams ended because their client read too slowly").register(registry);
         Gauge.builder("oro.attachments.disk.free.bytes", storage, files -> {
             FileStorage local = files.getIfAvailable();
             long usable = local == null ? -1 : local.usableSpace();

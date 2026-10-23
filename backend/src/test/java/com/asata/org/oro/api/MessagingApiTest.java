@@ -111,6 +111,29 @@ class MessagingApiTest extends PostgresIntegrationTest {
         call(post("/conversations/" + chat + "/messages"), amara,
                 "{\"clientMessageId\": \"client-000x\", \"type\": \"TEXT\", \"body\": \"Hello\", \"metadata\": [1]}")
                 .andExpect(status().isBadRequest());
+        // the metadata holds mentions of members only: no other key (a preview, a system event), nobody outside
+        call(post("/conversations/" + chat + "/messages"), amara,
+                "{\"clientMessageId\": \"client-000y\", \"type\": \"TEXT\", \"body\": \"Look\", "
+                        + "\"metadata\": {\"preview\": {\"title\": \"Your bank\", \"url\": \"https://example.org\"}}}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(containsString("mentions only")));
+        call(post("/conversations/" + chat + "/messages"), amara,
+                "{\"clientMessageId\": \"client-000z\", \"type\": \"TEXT\", \"body\": \"Hi\", "
+                        + "\"metadata\": {\"event\": \"member.joined\", \"userId\": \"umoja-kwame\"}}")
+                .andExpect(status().isBadRequest());
+        // Kwame is of Acme, not of the team Design
+        call(post("/conversations/" + chat + "/messages"), amara,
+                "{\"clientMessageId\": \"client-000w\", \"type\": \"TEXT\", \"body\": \"@Kwame\", "
+                        + "\"metadata\": {\"mentions\": [\"umoja-kwame\"]}}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("A mention is a member of the conversation"));
+        call(post("/conversations/" + chat + "/messages"), amara,
+                "{\"clientMessageId\": \"client-000v\", \"type\": \"TEXT\", \"body\": \"Hi\", "
+                        + "\"metadata\": {\"mentions\": [\"x\", 1]}}")
+                .andExpect(status().isBadRequest());
+        // a mention twice is kept once
+        call(post("/conversations/" + chat + "/messages"), amara,
+                "{\"clientMessageId\": \"client-000u\", \"type\": \"TEXT\", \"body\": \"@Jordan @Jordan\", "
+                        + "\"metadata\": {\"mentions\": [\"umoja-jordan\", \"umoja-jordan\"]}}")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.metadata.mentions", contains("umoja-jordan")));
         String message = read(call(post("/conversations/" + chat + "/messages"), jordan,
                 "{\"clientMessageId\": \"client-0001\", \"type\": \"TEXT\", \"body\": \"The onboarding research\", "
                         + "\"metadata\": {\"mentions\": [\"umoja-amara\"]}}")

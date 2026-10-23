@@ -23,6 +23,12 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The open streams (Server-Sent Events) of the users of this instance, and who is online: a user is online while one
@@ -35,6 +41,10 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * <p>
  * One instance only: the streams and the presence live in its memory. Several instances need a shared bus (PostgreSQL
  * LISTEN/NOTIFY, Redis) for the events and the presence.
+ * <p>
+ * The writes never block the caller (the outbox worker, a request, the heartbeat): each stream has its queue, written
+ * in order by a virtual thread of its own, so a client that reads slowly holds up only itself. A stream whose queue is
+ * full (its client that far behind) is ended: the client reconnects and reads what it missed through the API.
  * <p>
  * On a stop, before the server stops taking requests (a phase above its graceful shutdown): every stream hears
  * reconnect and is closed, and a new one is refused (503) until the end, so that the server does not wait for streams
@@ -62,6 +72,12 @@ public class LiveHub implements SmartLifecycle {
     private int maxStreamsPerUser = 5;
     /** the streams of this instance at most: the next gets 503 */
     private int maxStreams = 10_000;
+    /** the events waiting for one stream at most: more, and the stream is ended */
+    private int queueCapacity = 500;
+    /** writes the streams: a virtual thread per stream being written (a direct executor in the tests) */
+    private final Executor writers;
+    /** the streams ended because their client read too slowly */
+    private final AtomicLong endedSlow = new AtomicLong();
     /** stopping: the streams are closed, no new one */
     private volatile boolean stopping;
     private volatile boolean started;
@@ -76,21 +92,43 @@ public class LiveHub implements SmartLifecycle {
         this.maxStreams = maxStreams;
     }
 
-    public LiveHub() {
-        this(Clock.systemUTC());
+    @org.springframework.beans.factory.annotation.Value("${oro.live.queue-capacity:500}")
+    void setQueueCapacity(int queueCapacity) {
+        this.queueCapacity = queueCapacity;
     }
 
-    /** a clock of the tests */
-    LiveHub(Clock clock) {
+    public LiveHub() {
+        this(Clock.systemUTC(), Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("oro-stream-", 0).factory()));
+    }
+
+    /** a clock and an executor of the tests */
+    LiveHub(Clock clock, Executor writers) {
         this.clock = clock;
+        this.writers = writers;
     }
 
     /**
      * an open stream: identityId and userId are the same user, as Oro and as its product know it; expiresAt: the end of
      * the token that opened it
      */
-    record Connection(SseEmitter emitter, UUID identityId, String userId, Scope scope, Instant expiresAt) {
+    record Connection(SseEmitter emitter, UUID identityId, String userId, Scope scope, Instant expiresAt, Outgoing out) {
     }
+
+    /** what waits to be written on one stream: events (maps), PING and END, written by one writer at a time */
+    static final class Outgoing {
+        final BlockingQueue<Object> queue;
+        final AtomicBoolean writing = new AtomicBoolean();
+        /** nothing more is queued: END is, or the stream is gone */
+        boolean ended;
+
+        Outgoing(int capacity) {
+            queue = new ArrayBlockingQueue<>(capacity);
+        }
+    }
+
+    private static final Object PING = new Object();
+    private static final Object END = new Object();
+    private static final Map<String, String> RECONNECT = Map.of("type", "reconnect");
 
     /** who has a stream open, in which scope: what LiveAuthorization checks */
     public record Subject(UUID identityId, Product product, UUID organizationId) {
@@ -126,14 +164,15 @@ public class LiveHub implements SmartLifecycle {
         // the timeout of the stream: a backstop, the expiry below ends it first (nothing reaches the client from a timeout)
         SseEmitter emitter = newEmitter(Duration.between(now, expiresAt).plusSeconds(10));
         Scope scope = Scope.of(actor);
-        Connection connection = new Connection(emitter, actor.identityId(), userId, scope, expiresAt);
+        Connection connection = new Connection(emitter, actor.identityId(), userId, scope, expiresAt, new Outgoing(queueCapacity));
         boolean first = !isOnline(actor.identityId(), scope);
         connections.computeIfAbsent(actor.identityId(), id -> new CopyOnWriteArraySet<>()).add(connection);
         open.incrementAndGet();
-        Runnable close = () -> disconnect(connection);
-        emitter.onCompletion(close);
-        emitter.onTimeout(close);
-        emitter.onError(error -> close.run());
+        // the stream ended by the server (its end, a timeout) or by the client (an error of the connection)
+        Runnable gone = () -> gone(connection);
+        emitter.onCompletion(gone);
+        emitter.onTimeout(gone);
+        emitter.onError(error -> gone.run());
         // the token ends: the client opens a new stream, with a new token
         expiries.put(connection, expirer.schedule(() -> close(connection, true),
                 Math.max(0, Duration.between(now, expiresAt).toMillis()), TimeUnit.MILLISECONDS));
@@ -164,6 +203,11 @@ public class LiveHub implements SmartLifecycle {
     /** the streams open on this instance */
     public int openStreams() {
         return open.get();
+    }
+
+    /** the streams ended since the start because their client read too slowly */
+    public long streamsEndedSlow() {
+        return endedSlow.get();
     }
 
     /** who has a stream open, in which scope */
@@ -210,15 +254,37 @@ public class LiveHub implements SmartLifecycle {
         return closed;
     }
 
-    /** reconnect: tells the client to open a new stream (its token expired), else just ends it */
+    /**
+     * ends the stream: gone at once for the others (offline), completed by its writer after what is queued.
+     * reconnect: tells the client to open a new stream (its token expired, Oro stops), else just ends it
+     */
     private void close(Connection connection, boolean reconnect) {
-        if (reconnect) {
-            send(connection, Map.of("type", "reconnect"));
+        Outgoing out = connection.out();
+        synchronized (out) {
+            if (out.ended) {
+                return;
+            }
+            out.ended = true;
+            int needed = reconnect ? 2 : 1;
+            if (out.queue.remainingCapacity() < needed) {
+                // too far behind to be worth writing
+                out.queue.clear();
+            }
+            if (reconnect) {
+                out.queue.add(RECONNECT);
+            }
+            out.queue.add(END);
         }
-        try {
-            connection.emitter().complete();
-        } catch (IllegalStateException e) {
-            log.debug("stream of {} already closed", connection.identityId());
+        disconnect(connection);
+        write(connection);
+    }
+
+    /** the stream is over (completed, timed out, broken): nothing more to write */
+    private void gone(Connection connection) {
+        Outgoing out = connection.out();
+        synchronized (out) {
+            out.ended = true;
+            out.queue.clear();
         }
         disconnect(connection);
     }
@@ -226,14 +292,7 @@ public class LiveHub implements SmartLifecycle {
     /** a comment on every stream, so that the proxies keep them open and the dead ones are found */
     @Scheduled(fixedDelayString = "${oro.live.heartbeat:PT25S}")
     public void heartbeat() {
-        connections.values().forEach(set -> set.forEach(connection -> {
-            try {
-                connection.emitter().send(SseEmitter.event().comment("ping"));
-            } catch (IOException | IllegalStateException e) {
-                // the client is gone: a normal end, not an error of the server
-                close(connection, false);
-            }
-        }));
+        connections.values().forEach(set -> set.forEach(connection -> send(connection, PING)));
     }
 
     /** the stream of a new connection (a recording one in the tests) */
@@ -286,6 +345,9 @@ public class LiveHub implements SmartLifecycle {
     @PreDestroy
     void stopExpirer() {
         expirer.shutdownNow();
+        if (writers instanceof ExecutorService service) {
+            service.shutdown();
+        }
     }
 
     private void disconnect(Connection connection) {
@@ -312,12 +374,67 @@ public class LiveHub implements SmartLifecycle {
                 .forEach(connection -> send(connection, event)));
     }
 
-    private void send(Connection connection, Map<String, ?> event) {
-        try {
-            connection.emitter().send(SseEmitter.event().data(event, MediaType.APPLICATION_JSON));
-        } catch (IOException | IllegalStateException e) {
-            log.debug("stream of {} closed: {}", connection.identityId(), e.getMessage());
+    /** queued for the stream, never written here: the caller never waits for a client */
+    private void send(Connection connection, Object item) {
+        Outgoing out = connection.out();
+        boolean full;
+        synchronized (out) {
+            if (out.ended) {
+                return;
+            }
+            full = !out.queue.offer(item);
+        }
+        if (full) {
+            endedSlow.incrementAndGet();
+            log.info("stream of {} ended: {} events waiting, its client reads too slowly", connection.identityId(), queueCapacity);
             close(connection, false);
+            return;
+        }
+        write(connection);
+    }
+
+    /** a writer for the stream, unless one is at work: the events of a stream are written in order, one at a time */
+    private void write(Connection connection) {
+        Outgoing out = connection.out();
+        if (out.writing.compareAndSet(false, true)) {
+            writers.execute(() -> drain(connection));
+        }
+    }
+
+    /** writes what is queued; a write may block (the client reads slowly): only this stream's writer waits */
+    private void drain(Connection connection) {
+        Outgoing out = connection.out();
+        try {
+            for (Object item; (item = out.queue.poll()) != null; ) {
+                if (item == END) {
+                    complete(connection);
+                    return;
+                }
+                try {
+                    connection.emitter().send(item == PING ? SseEmitter.event().comment("ping")
+                            : SseEmitter.event().data(item, MediaType.APPLICATION_JSON));
+                } catch (IOException | IllegalStateException e) {
+                    // the client is gone: a normal end, not an error of the server
+                    log.debug("stream of {} closed: {}", connection.identityId(), e.getMessage());
+                    gone(connection);
+                    complete(connection);
+                    return;
+                }
+            }
+        } finally {
+            out.writing.set(false);
+        }
+        // queued after the last poll and before the flag was cleared: written now
+        if (!out.queue.isEmpty()) {
+            write(connection);
+        }
+    }
+
+    private static void complete(Connection connection) {
+        try {
+            connection.emitter().complete();
+        } catch (IllegalStateException e) {
+            log.debug("stream of {} already closed", connection.identityId());
         }
     }
 }

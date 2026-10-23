@@ -21,7 +21,7 @@ class LiveHubTest {
         Runnable onCompletion = () -> { };
 
         @Override
-        public void send(SseEventBuilder builder) {
+        public synchronized void send(SseEventBuilder builder) {
             builder.build().forEach(part -> {
                 if (part.getData() instanceof Map<?, ?> event) {
                     events.add(event);
@@ -38,7 +38,7 @@ class LiveHubTest {
             onCompletion.run();
         }
 
-        List<Object> ofType(String type) {
+        synchronized List<Object> ofType(String type) {
             return events.stream().filter(e -> type.equals(((Map<?, ?>) e).get("type"))).toList();
         }
     }
@@ -60,7 +60,7 @@ class LiveHubTest {
         public Instant instant() {
             return now;
         }
-    }) {
+    }, Runnable::run) {
         @Override
         protected SseEmitter newEmitter(java.time.Duration timeout) {
             RecordingEmitter emitter = new RecordingEmitter();
@@ -208,5 +208,70 @@ class LiveHubTest {
                 .isInstanceOf(com.asata.org.oro.exception.ServiceUnavailable.class);
         // before the graceful shutdown of the server, which would wait for the streams
         assertThat(hub.getPhase()).isGreaterThan(org.springframework.boot.web.server.context.WebServerGracefulShutdownLifecycle.SMART_LIFECYCLE_PHASE);
+    }
+
+    /** a stream that takes a write only when the test lets it: a client that does not read */
+    static class StuckEmitter extends RecordingEmitter {
+        final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        volatile boolean completed;
+
+        @Override
+        public void send(SseEventBuilder builder) {
+            // outside the lock of the recording: the test reads it meanwhile
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            super.send(builder);
+        }
+
+        @Override
+        public void complete() {
+            completed = true;
+        }
+    }
+
+    /** one client that does not read holds up nobody else, and is ended once too far behind */
+    @Test
+    void aClientThatDoesNotReadHoldsUpOnlyItself() throws Exception {
+        List<RecordingEmitter> made = Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.ExecutorService virtual = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+        LiveHub threaded = new LiveHub(java.time.Clock.systemUTC(), virtual) {
+            @Override
+            protected SseEmitter newEmitter(java.time.Duration timeout) {
+                RecordingEmitter emitter = made.isEmpty() ? new StuckEmitter() : new RecordingEmitter();
+                made.add(emitter);
+                return emitter;
+            }
+        };
+        threaded.setQueueCapacity(20);
+        UUID stuckId = UUID.randomUUID();
+        UUID amara = UUID.randomUUID();
+        StuckEmitter stuck = (StuckEmitter) threaded.connect(Actor.umoja(stuckId, ACME), "stuck", null);
+        RecordingEmitter reader = (RecordingEmitter) threaded.connect(Actor.umoja(amara, ACME), "amara", null);
+
+        long start = System.nanoTime();
+        for (int i = 0; i < 50; i++) {
+            threaded.send(List.of(stuckId, amara), com.asata.org.oro.enums.Product.UMOJA, ACME, Map.of("type", "typing", "n", i));
+        }
+        // the sender never waited for the stuck client
+        assertThat(java.time.Duration.ofNanos(System.nanoTime() - start)).isLessThan(java.time.Duration.ofSeconds(1));
+        // the reader got everything within a second
+        long deadline = System.currentTimeMillis() + 1000;
+        while (reader.ofType("typing").size() < 50 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(reader.ofType("typing")).hasSize(50);
+        // the stuck one is ended, offline for the others, counted
+        assertThat(threaded.online(com.asata.org.oro.enums.Product.UMOJA, ACME)).containsExactly("amara");
+        assertThat(threaded.streamsEndedSlow()).isEqualTo(1);
+        stuck.release.countDown();
+        deadline = System.currentTimeMillis() + 1000;
+        while (!stuck.completed && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(stuck.completed).isTrue();
+        virtual.shutdownNow();
     }
 }

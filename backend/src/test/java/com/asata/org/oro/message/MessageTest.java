@@ -157,7 +157,7 @@ class MessageTest extends PostgresIntegrationTest {
     @Test
     void aDeletedMessageKeepsItsPlaceButNotItsContent() {
         Message message = messages.send(amaniActor, direct, new SendMessage("client-key-0003",
-                com.asata.org.oro.enums.MessageType.TEXT, "A secret", "{\"mentions\": [\"baraka\"]}", List.of())).message();
+                com.asata.org.oro.enums.MessageType.TEXT, "A secret", List.of("oro-baraka"), List.of())).message();
         say(amaniActor, direct, "After");
 
         Message deleted = messages.delete(amaniActor, message.getId());

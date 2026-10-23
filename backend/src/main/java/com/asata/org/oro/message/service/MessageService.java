@@ -45,6 +45,7 @@ public class MessageService {
     private final AttachmentRepository attachments;
     private final OutboxWriter outbox;
     private final JdbcTemplate jdbc;
+    private final tools.jackson.databind.json.JsonMapper json;
 
     /**
      * Sends a message, in one transaction (all or nothing): the conversation row is locked (the sends of a
@@ -64,6 +65,7 @@ public class MessageService {
         if (existing.isPresent()) {
             return new SendResult(existing.get(), true);
         }
+        requireMembers(conversation.getId(), request.mentions());
         long seq = conversation.getLastMessageSeq() + 1;
         conversation.setLastMessageSeq(seq);
         // the seq first: the trigger of the message checks the conversation gave it
@@ -78,7 +80,8 @@ public class MessageService {
         message.setClientMessageId(request.clientMessageId());
         message.setType(request.type());
         message.setBody(request.body());
-        message.setMetadata(request.metadata() == null ? "{}" : request.metadata());
+        String metadata = MessageMetadata.stored(request.mentions(), json);
+        message.setMetadata(metadata == null ? "{}" : metadata);
         message.setCreatedAt(OffsetDateTime.now());
         em.persist(message);
         em.flush();
@@ -274,6 +277,21 @@ public class MessageService {
             throw new Conflict("The message is deleted");
         }
         return message;
+    }
+
+    /** a mention is an active member of the conversation: a client never shows a forged one */
+    private void requireMembers(UUID conversationId, List<String> userIds) {
+        if (userIds.isEmpty()) {
+            return;
+        }
+        Integer found = jdbc.queryForObject("""
+                SELECT count(DISTINCT i.external_user_id) FROM oro_conversation_member m
+                JOIN oro_messaging_identity i ON i.id = m.user_id AND i.product_id = m.product_id
+                WHERE m.conversation_id = ? AND m.left_at IS NULL AND i.external_user_id = ANY(?)""",
+                Integer.class, conversationId, userIds.toArray(String[]::new));
+        if (found == null || found != userIds.size()) {
+            throw new IllegalArgumentException("A mention is a member of the conversation");
+        }
     }
 
     private static void validate(SendMessage request) {

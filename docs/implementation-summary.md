@@ -21,6 +21,7 @@ Caddy in production ([Deployment](deployment.md)).
 
 ## Security and privacy
 
+- A message carries mentions of members only: no link preview or system event forged by its sender.
 - Oro stores no password, email or credential. Each product signs the tokens of its users with its own private key
   (RS256) and publishes the public ones; Oro checks the signature, the issuer and the audience `oro`, and a token of
   one product is never accepted as the other's.
@@ -44,6 +45,8 @@ Caddy in production ([Deployment](deployment.md)).
 
 - Outbox: an event is written in the same transaction as its change and published later by a worker, with retries,
   backoff and leases. Workers never claim the same event (`SKIP LOCKED`).
+- Each stream has its own queue and writer, so a client that reads slowly holds up only itself; one 500 events
+  behind is ended and reconnects.
 - A send locks its conversation, which gives the order without gaps. Concurrent openings of the same direct
   conversation give one.
 - Deleted files and uploads never attached are purged by a job.
@@ -68,7 +71,7 @@ Caddy in production ([Deployment](deployment.md)).
 - 119 source files under `backend/src/main/java/com/asata/org/oro`: identity, conversation, message, attachment
   (storage, scan, purge), live, outbox, config (security, web, rate limits, metrics, production) and context (the
   database session).
-- 152 integration tests in 32 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- 153 integration tests in 32 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
 - Umoja already uses Oro: its frontend has a Messages page, and its backend sends its organizations and teams to Oro

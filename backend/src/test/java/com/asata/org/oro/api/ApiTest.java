@@ -171,10 +171,10 @@ class ApiTest extends PostgresIntegrationTest {
         call(post("/conversations/direct"), baraka, null, "{\"userId\":\"oro-amani\"}")
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(direct));
 
-        String send = "{\"clientMessageId\":\"client-0001\",\"type\":\"TEXT\",\"body\":\"Hello Baraka\",\"metadata\":{\"mood\":\"happy\"}}";
+        String send = "{\"clientMessageId\":\"client-0001\",\"type\":\"TEXT\",\"body\":\"Hello Baraka\",\"metadata\":{\"mentions\":[\"oro-baraka\"]}}";
         String messageId = idOf(call(post("/conversations/" + direct + "/messages"), amani, null, send)
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.seq").value(1))
-                .andExpect(jsonPath("$.senderUserId").value("oro-amani")).andExpect(jsonPath("$.metadata.mood").value("happy")));
+                .andExpect(jsonPath("$.senderUserId").value("oro-amani")).andExpect(jsonPath("$.metadata.mentions[0]").value("oro-baraka")));
         call(post("/conversations/" + direct + "/messages"), amani, null, send)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(messageId));
 

@@ -465,7 +465,10 @@ the last message by the trigger.
 **Deletion** keeps the row as a tombstone so the message keeps its place in the order. The trigger erases the content
 (`body` NULL, `metadata` `{}`), a check constraint guarantees it, and a deleted message cannot be undeleted or edited.
 Its attachments are marked `deleted_at` for purging. Edits set `edited_at` (in the database); no edit history is kept.
-`metadata` is optional extensible data (mentions, link previews), at most 8 KB, and never holds authorization data.
+`metadata` holds the mentions of a message and nothing else: `{"mentions": ["<user id>", ...]}`, at most 50, each an
+active member of the conversation (`MessageMetadata`); any other key gets 400, so a sender cannot forge a link preview
+or a system event that other clients would show. System messages carry what happened (`event`, `userId`), written by
+Oro only. The database keeps the 8 KB limit.
 
 ### Read state: positions, not receipts
 
@@ -643,6 +646,7 @@ What Oro measures, besides the requests by route and status (`http_server_reques
 | `oro_messages_send_seconds{outcome}` | A send, its commit included: created, duplicate, refused |
 | `oro_conversation_lock_seconds` | The wait for the row of a conversation (sends take turns) |
 | `oro_streams_open` | The streams open on the instance |
+| `oro_streams_ended_slow_total` | The streams ended because their client read too slowly (500 events behind) |
 | `oro_outbox_pending`, `oro_outbox_failed`, `oro_outbox_oldest_pending_seconds` | The outbox: waiting, failed for good, the lag of the live events |
 | `oro_attachments_scan_pending`, `oro_attachments_scan_oldest_pending_seconds` | The files waiting for their malware scan |
 | `oro_attachments_scanned_total{result}` | The scans: clean, infected, failed |

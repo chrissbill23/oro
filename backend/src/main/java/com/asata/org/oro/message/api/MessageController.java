@@ -4,6 +4,7 @@ import com.asata.org.oro.context.Actor;
 import com.asata.org.oro.identity.service.IdentityService;
 import com.asata.org.oro.message.dto.*;
 import com.asata.org.oro.message.entity.Message;
+import com.asata.org.oro.message.service.MessageMetadata;
 import com.asata.org.oro.message.service.MessageService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -11,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
-import tools.jackson.databind.JsonNode;
 
 import java.util.*;
 
@@ -37,18 +37,15 @@ public class MessageController implements MessageApi {
 
     @Override
     public ResponseEntity<MessageDTO> send(Actor actor, UUID conversationId, SendMessageRequest request) {
-        // "metadata": null reads as a null node: no metadata
-        JsonNode metadata = request.metadata() == null || request.metadata().isNull() ? null : request.metadata();
-        if (metadata != null && !metadata.isObject()) {
-            throw new IllegalArgumentException("metadata is a JSON object");
-        }
+        // mentions only (400 for anything else); "metadata": null reads as a null node: no metadata
+        List<String> mentions = MessageMetadata.mentions(request.metadata());
         // oro.messages.send: the time of a send, its commit included, by outcome (created, duplicate, refused)
         Timer.Sample sample = Timer.start(meters);
         String outcome = "refused";
         SendResult result;
         try {
             result = messages.send(actor, conversationId, new SendMessage(request.clientMessageId(), request.type(),
-                    request.body(), metadata == null ? null : metadata.toString(),
+                    request.body(), mentions,
                     request.attachmentIds() == null ? List.of() : request.attachmentIds()));
             outcome = result.duplicate() ? "duplicate" : "created";
         } finally {

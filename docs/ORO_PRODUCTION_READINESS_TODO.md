@@ -330,7 +330,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: a test of the purge; a check of the backup retention setting
 
-- [ ] `ORO-SEC-015` — P0 — Define what `metadata` may hold
+- [x] `ORO-SEC-015` — P0 — Define what `metadata` may hold
+  - Done (2026-10-24): `{"mentions": [...]}` only, at most 50 user ids, each an active member of the conversation (`MessageMetadata`, `MessageService.requireMembers`); any other key, a non-member, a list that is not of user ids: 400. Umoja's client renders `@names` from the members it knows, never from the metadata, and system text only for system messages (which users cannot send). Tested: `MessagingApiTest` (a preview, a system event, a non-member refused; a mention twice kept once), `ApiTest`; `LogPrivacyTest` now makes the database refuse a row with a constraint of the test.
   - Current state: Partially implemented (a JSON object, at most 8 KB, never authorization data)
   - Evidence: `MessageController.send` accepts any JSON object; `CREATE_ORO_TABLES.sql` limits its size. Other
     clients render it (mentions, link previews), so a sender can forge a mention or a preview pointing elsewhere.
@@ -661,7 +662,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Post-launch
   - Verification: load test of one busy group
 
-- [ ] `ORO-SCL-004` — P2 — Do not let a slow stream block the outbox worker
+- [x] `ORO-SCL-004` — P2 — Do not let a slow stream block the outbox worker
+  - Done (2026-10-24): every write goes to a queue per stream (500 events), written in order by a virtual thread of that stream; the outbox worker, the requests and the heartbeat only queue, and a new stream no longer writes under the lock of the hub. A full queue ends the stream (`oro_streams_ended_slow_total`): the client reconnects and reads what it missed. Tested: `LiveHubTest.aClientThatDoesNotReadHoldsUpOnlyItself` (a client that never reads: 50 events reach the other one within a second, the sender never waits); on the local stack, a stream through nginx gets hello, the heartbeat and reconnect.
   - Current state: Confirmed defect
   - Evidence: `LiveOutboxEventHandler.handle` calls `LiveHub.send`, which writes to each `SseEmitter` on the worker's
     thread; `LiveHub.heartbeat` writes to every stream in one loop. A client that reads slowly fills its TCP buffer and
