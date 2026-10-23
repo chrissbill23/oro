@@ -416,7 +416,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Recommended before launch (blocker if the files are not on a backed-up volume)
   - Verification: Testcontainers MinIO in `AttachmentTest`
 
-- [ ] `ORO-LCH-004` — P1 — Malware scanning
+- [x] `ORO-LCH-004` — P1 — Malware scanning
+  - Done (2026-10-23): ClamAV (`clamav/clamav:1.5.4-debian13-slim` in the compose file, its limits at 110M), INSTREAM client `ClamAvScanner`, `AttachmentScanning`: scanned once stored, infected refused (422) and deleted, failed for good, pending while clamd is away and scanned again every minute; fail closed. Checked on the local stack with EICAR. Tested: `MalwareScanTest` (a clamd of the test). Still to do with `ORO-LCH-008`: refusing to start with `scan: none` in production.
   - Current state: Missing (`oro.attachments.scan: none` records every file clean)
   - Evidence: `AttachmentController.upload` (`scanless`); `AttachmentService.recordScan`; `scan_status` in
     `oro_attachment`.
@@ -430,7 +431,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker (business customers exchange files)
   - Verification: Testcontainers ClamAV with EICAR
 
-- [ ] `ORO-LCH-005` — P1 — Check the real file type and remove photo metadata
+- [x] `ORO-LCH-005` — P1 — Check the real file type and remove photo metadata
+  - Done (2026-10-23): `FileTypes` (tika-core 4.1.0): the type from the bytes whenever it decides what is shown; `ImageMetadata` strips JPEG, PNG and WebP metadata without decoding them, keeping the JPEG orientation. Tested: `ImageMetadataTest`, `FileTypesTest`, `FileUploadTest`; checked on the local stack.
   - Current state: Missing (the declared `Content-Type` is trusted)
   - Evidence: `AttachmentController.mimeType`, `INLINE`; images are served inline with their declared type.
   - Action: detect the type from the bytes (Apache Tika core); inline only when detection agrees with an image type;
@@ -442,7 +444,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker for the Oro launch (privacy); recommended for Umoja
   - Verification: `MessagingApiTest` with sample files
 
-- [ ] `ORO-LCH-006` — P1 — Purge deleted files and abandoned uploads
+- [x] `ORO-LCH-006` — P1 — Purge deleted files and abandoned uploads
+  - Done (2026-10-23): `AttachmentPurge` every 15 minutes (deleted messages at once, never attached after 24 h, never received after 1 h; file then row, SKIP LOCKED), and the files without an attachment every day. Tested: `AttachmentPurgeTest`.
   - Current state: Missing
   - Evidence: `deleted_at` on `oro_attachment` is set and never acted on; uploads never attached and rows left
     `pending` by a failed upload (`AttachmentController.upload` is not one transaction) stay forever;
@@ -625,8 +628,9 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Recommended before launch
   - Verification: the plans saved in the repository
 
-- [ ] `ORO-SCL-002` — P2 — Indexed search
-  - Current state: Implemented without an index (`ILIKE '%…%'`, 30 results)
+- [x] `ORO-SCL-002` — P2 — Indexed search
+  - Correction (2026-10-23): the audit was wrong, the search is indexed: `idx_oro_message_body_trgm` (pg_trgm GIN on `body`, `CREATE_ORO_TABLES.sql`, commit `c2793ec`) serves the `ILIKE`. What is left is `ORO-SCL-001`, checking its plan on realistic data.
+  - Current state: Implemented with a trigram index
   - Evidence: `MessageService.search`.
   - Problem: the search reads every message of the user's conversations.
   - Trigger: search p95 over 300 ms, or a user with more than ~200k readable messages.
@@ -879,7 +883,7 @@ below are scenarios that are not covered.
   - Launch impact: Blocker
   - Verification: CI
 
-- [ ] `ORO-TST-006` — P4 — Files: spoofed types, quotas, purge, scan
+- [x] `ORO-TST-006` — P4 — Files: spoofed types, quotas, purge, scan
   - Current state: Partially implemented (authorization, names, size)
   - Evidence: `AttachmentTest`, `MessagingApiTest.aFileIsUploadedSentAndDownloadedByTheMembersOnly`.
   - Action: tests for `ORO-LCH-004`, `005`, `006` and `ORO-SEC-012`.

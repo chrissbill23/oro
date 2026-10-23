@@ -18,6 +18,9 @@ oro:
     storage-provider: local
     local-dir: target/test-attachments
     scan: none
+    # the tests run the purge by hand
+    purge:
+      enabled: false
   outbox:
     # the tests run the worker by hand
     enabled: false

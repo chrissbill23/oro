@@ -34,6 +34,9 @@ services:
       ORO_CORS_ALLOWED_ORIGINS: ${ORO_CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://localhost:4201}
       # the uploads are received on the volume of the attachments, not on the disk of the container
       ORO_MULTIPART_DIR: /data/attachments/.incoming
+      # every file scanned by clamd before it can be downloaded (none: development without a scanner, never in production)
+      ORO_ATTACHMENTS_SCAN: ${ORO_ATTACHMENTS_SCAN:-clamav}
+      ORO_CLAMAV_HOST: clamav
     volumes:
       # the files of the attachments (local storage), kept across rebuilds
       - attachments:/data/attachments
@@ -50,8 +53,22 @@ services:
       # on the network asataDB; never published on every interface (/internal would be reachable)
       - "127.0.0.1:${ORO_PORT:-8082}:8082"
 
+  # the malware scanner of the attachments (clamd on 3310, this network only). Its first start downloads the signatures
+  # (a few minutes, kept in a volume); about 1.5 GB of memory. Meanwhile the uploads wait, pending
+  clamav:
+    image: clamav/clamav:1.5.4-debian13-slim
+    environment:
+      # what clamd scans covers oro.attachments.max-size-bytes (100 MiB)
+      CLAMD_CONF_StreamMaxLength: 110M
+      CLAMD_CONF_MaxFileSize: 110M
+      CLAMD_CONF_MaxScanSize: 220M
+    volumes:
+      - clamav-signatures:/var/lib/clamav
+    restart: unless-stopped
+
 volumes:
   attachments:
+  clamav-signatures:
 
 networks:
   # created by ../../1_ASATA_DATABASE/docker-compose.yml

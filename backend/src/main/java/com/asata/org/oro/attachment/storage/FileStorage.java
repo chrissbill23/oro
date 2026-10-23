@@ -16,6 +16,13 @@ public interface FileStorage {
 
     void delete(String key) throws IOException;
 
+    /**
+     * the keys of the stored files last changed before the time, for the purge of the files without an attachment;
+     * nothing by default (an object storage lists its objects with its own API)
+     */
+    default void forEachKey(java.time.Instant changedBefore, java.util.function.Consumer<String> key) throws IOException {
+    }
+
     /** refuses (ServiceUnavailable) a file of this size when the storage is short of space; nothing by default */
     default void requireSpace(long bytes) {
     }

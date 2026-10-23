@@ -75,12 +75,12 @@ The choices that limit Oro today, why they were made, what they risk, and when t
   clients.
 - **Revisit**: now (`ORO-SEC-015`).
 
-### Unindexed search
+### Search by trigrams
 
-- **Today**: `ILIKE '%…%'` over the user's readable messages, 30 results.
-- **Why**: correct with RLS, no extension needed.
-- **Risk**: the cost grows with the number of messages a user can read.
-- **Revisit**: search p95 over 300 ms (`ORO-SCL-002`).
+- **Today**: `ILIKE '%…%'` over the user's readable messages, 30 results, served by a trigram index
+  (`idx_oro_message_body_trgm`).
+- **Risk**: no ranking, no stemming; the index grows with the messages and slows the sends a little.
+- **Revisit**: when users ask for relevance or languages (full-text search), or search p95 over 300 ms.
 
 ### No partitioning
 
@@ -131,12 +131,12 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 
 ### Files through the API on a local disk
 
-- **Today**: `LocalFileStorage`; uploads and downloads stream through the API; no scanner.
+- **Today**: `LocalFileStorage`; uploads and downloads stream through the API; scanned by clamd (since 2026-10-23).
 - **Why**: one authorization path, nothing extra to run in development.
-- **Risk**: the disk fills, the files are not backed up with the database, malware is served as clean, API threads
-  are busy with large transfers.
-- **Revisit**: scanner before launch (`ORO-LCH-004`); object storage before launch unless the volume is backed up
-  (`ORO-LCH-003`); signed URLs only when transfers load the API (measured).
+- **Risk**: the files are not backed up with the database; API threads are busy with large transfers and their
+  scans; a file found clean later is not announced on the streams; ClamAV needs about 1.5 GB of memory.
+- **Revisit**: object storage before launch unless the volume is backed up (`ORO-LCH-003`); signed URLs only when
+  transfers load the API (measured); an event for a file scanned late if clients need it.
 
 ## Operations
 

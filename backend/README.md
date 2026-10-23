@@ -67,7 +67,9 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | `ORO_OUTBOX_ENABLED` | `true` | Runs the outbox worker |
 | `ORO_STORAGE_PROVIDER` | `local` | Where the files of the attachments go: `local` (a disk, `ORO_ATTACHMENTS_DIR`); another provider needs its `FileStorage`, until then nothing can be uploaded |
 | `ORO_ATTACHMENTS_DIR` | `./data/attachments` (`/data/attachments` in Docker, a volume) | The directory of the local storage |
-| `ORO_ATTACHMENTS_SCAN` | `none` | `none`: no malware scanner, a file is recorded clean unscanned (**development only**); anything else: the files stay pending, not downloadable, until a scanner records its result |
+| `ORO_ATTACHMENTS_SCAN` | `clamav` here, `none` in `application.yml` | `clamav`: every file scanned by clamd before it can be downloaded, fail closed; `none`: no scanner, a file is recorded clean unscanned (**development only**) |
+| `ORO_CLAMAV_HOST`, `ORO_CLAMAV_PORT` | `clamav`, `3310` | clamd (the `clamav` service of the compose file) |
+| `ORO_ATTACHMENTS_PURGE` | `true` | The purge of the files Oro no longer keeps |
 | `ORO_ATTACHMENTS_QUOTA_BYTES`, `ORO_ATTACHMENTS_QUOTA_FILES_PER_DAY` | `1073741824` (1 GiB), `200` | What a user may upload: the bytes of its files not deleted, its files of the last 24 hours (413, 429 beyond) |
 | `ORO_ATTACHMENTS_MIN_FREE_BYTES` | `1073741824` | The local storage keeps this much of its disk free (503 beyond) |
 | `ORO_MULTIPART_DIR` | the server's temporary directory (`/data/attachments/.incoming` in Docker) | Where an upload is received before it is stored: the data volume, not the disk of the system |
@@ -113,6 +115,10 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `IntegrationKeysConfigTest` | The keys are configured as `name:sha256` only: the key itself, a name twice or a key for two products is refused |
 | `StorageQuotaTest` | The bytes of a user are bounded (413) and given back by a deletion; the files of a day are bounded (429), deleted or not; nothing is stored when refused |
 | `LocalFileStorageSpaceTest` | An upload that would eat into the free space kept on the disk is refused (503) |
+| `AttachmentPurgeTest` | The files of deleted messages, the uploads never attached and never received go, file and row; the others stay; the files without an attachment go after a day, never the ones being received |
+| `ImageMetadataTest` | JPEG, PNG and WebP lose their Exif, XMP, texts and comments, keep their pixels and the JPEG orientation; a file that is not the image it says is refused |
+| `FileTypesTest`, `FileUploadTest` | The type comes from the bytes: a page declared as an image is downloaded, never shown; a photo is stored without its metadata; a broken image is refused |
+| `MalwareScanTest` | Against a clamd of the test: clean files downloadable, EICAR refused and deleted, nothing downloadable while clamd is away then scanned, a file clamd cannot read never downloadable |
 | `RateLimiterTest` | A bucket: the burst, then the rate, the wait until the next request; never more than the burst; the idle buckets go |
 | `RateLimitTest` | Over HTTP: 429 with `Retry-After` and nothing created; the other kinds and the other users are not limited by it; every request counts in `any` |
 | `JwkSetUriTest` | The public keys are read from where the product publishes them, at the first token then for a new `kid`: a rotation needs no restart; an unpublished key is refused |
@@ -495,8 +501,26 @@ signed URL: `POST /conversations/{id}/attachments` registers the file, writes it
 moved once complete), records its real size and SHA-256, then the scan. `GET /attachments/{id}/content` streams it to
 the members who may read its message: images (PNG, JPEG, GIF, WebP) inline, everything else (SVG and HTML included) as a
 download, with `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`. The file name is cleaned
-(no path, no control character). Without a scanner (`ORO_ATTACHMENTS_SCAN=none`), a file is recorded clean unscanned:
-for development only.
+(no path, no control character).
+
+**The type of a file** comes from its bytes (`FileTypes`, Apache Tika's detection): a file is an image shown inline
+only when its bytes are one, and a page or a script declared as an image is recorded as what it is and only ever
+downloaded. The declared type is kept for what is downloaded only (a `.docx`, detected as a zip).
+
+**Photos lose their metadata** before they are stored (`ImageMetadata`, without decoding them: same pixels, same
+quality): JPEG Exif, XMP, IPTC and comments, PNG text and Exif chunks, WebP EXIF and XMP chunks. Where, when and with
+what a photo was taken leave with them; the JPEG orientation is kept, alone, so that a photo of a phone is not shown
+sideways. A file that is not the image its bytes say is refused (400).
+
+**The malware scan** (`ORO_ATTACHMENTS_SCAN=clamav`, `AttachmentScanning`, ClamAV's clamd with INSTREAM) runs on each
+file once stored, fail closed: a file is downloadable only once clamd said clean. Infected: the upload is refused (422),
+its file deleted at once, its row kept infected (never attached). A file clamd cannot read (its size limit) is failed,
+for good. While clamd is away, the files stay pending (the upload answers `available: false`) and are scanned again
+every minute. Without a scanner (`ORO_ATTACHMENTS_SCAN=none`), a file is recorded clean unscanned: for development only.
+
+**The purge** (`AttachmentPurge`, as `oro_system`, every 15 minutes): the files of deleted messages at once, the uploads
+never attached after 24 hours, the uploads never received after an hour; file first, then row. Every day, the files of
+the storage without an attachment, a day old. The quota of a user counts its abandoned uploads until then.
 
 ### Outbox
 
@@ -614,8 +638,8 @@ whenever someone who knew a key leaves.
 - **Replay**: after a fix, put a failed event back with
   `UPDATE oro_outbox_event SET status = 'pending', next_attempt_at = now(), attempt_count = 0 WHERE id = …`, as
   `oro_system`.
-- **Purges**: processed outbox events (automatic); attachments with `deleted_at` (delete the object, then the row, as
-  `oro_system`); uploads never attached after 24 h (same). The last two jobs are not written yet.
+- **Purges**: processed outbox events, and the files Oro no longer keeps (see [Attachments](#attachments)), are
+  automatic. A file that will not delete is logged and retried at the next purge.
 - **Reconciliation**: the Umoja integration sends each organization as it is (`PUT /internal/organizations/{id}`) after
   every change and every 10 minutes; Oro revokes what is not listed.
 - **Backups**: they contain message content; encrypt them and keep them only as long as the retention policy allows.
@@ -625,10 +649,9 @@ whenever someone who knew a key leaves.
 - **One instance for the live events.** The streams and the presence are in the memory of the instance (`LiveHub`);
   several instances need a shared bus. No push notifications to phones. Oro has no account system of its own yet to
   issue its users' tokens. Integration keys are static, with no rotation; mTLS or signed requests would be stronger.
-- **Local storage only, no scanner.** Files go to a disk (`LocalFileStorage`); an object storage client (signed upload
-  and download URLs) and a malware scanner remain to be written, until then `ORO_ATTACHMENTS_SCAN=none` records them
-  clean unscanned.
-- **Jobs not written.** The purge jobs for attachments (deleted ones, uploads never attached) remain to be written.
+- **Local storage only.** Files go to a disk (`LocalFileStorage`); an object storage client (signed upload and download
+  URLs) remains to be written. A file scanned clean while it was pending is not announced on the streams: the client
+  asks again.
 - **Moderation and editing.** No moderation deletion by admins (only senders change their messages), no edit history,
   no threads.
 - **Send failure edge case.** A unique-key violation on a send (only reachable outside the locking path) surfaces as an

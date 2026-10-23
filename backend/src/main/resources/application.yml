@@ -126,13 +126,27 @@ oro:
     # needs its FileStorage, until then nothing can be uploaded
     storage-provider: ${ORO_STORAGE_PROVIDER:local}
     local-dir: ${ORO_ATTACHMENTS_DIR:./data/attachments}
-    # none: no malware scanner, a file is recorded clean unscanned (development only); anything else: the files stay
-    # pending (not downloadable) until a scanner records its result
+    # clamav: each file is scanned by clamd (below) before it is downloadable, fail closed (pending while clamd is away,
+    # scanned again every minute; infected: refused and deleted). none: no scanner, a file is recorded clean unscanned
+    # (development only, never in production)
     scan: ${ORO_ATTACHMENTS_SCAN:none}
+    clamav:
+      host: ${ORO_CLAMAV_HOST:localhost}
+      port: ${ORO_CLAMAV_PORT:3310}
+      # a file of max-size-bytes, scanned; clamd's StreamMaxLength, MaxFileSize and MaxScanSize must cover it too
+      timeout: PT2M
+      retry-interval: PT1M
     # what a user may upload: the bytes of its files not deleted, its files of the last 24 hours (413, 429 beyond)
     quota:
       bytes-per-user: ${ORO_ATTACHMENTS_QUOTA_BYTES:1073741824}
       files-per-day: ${ORO_ATTACHMENTS_QUOTA_FILES_PER_DAY:200}
+    # the files Oro no longer keeps, removed every interval: of deleted messages at once, uploads never attached after
+    # abandoned-after, uploads never received after pending-after; the files without an attachment every day
+    purge:
+      enabled: ${ORO_ATTACHMENTS_PURGE:true}
+      interval: PT15M
+      abandoned-after: PT24H
+      pending-after: PT1H
     # the local storage keeps this much of its disk free (503 beyond)
     local-min-free-bytes: ${ORO_ATTACHMENTS_MIN_FREE_BYTES:1073741824}
   live:

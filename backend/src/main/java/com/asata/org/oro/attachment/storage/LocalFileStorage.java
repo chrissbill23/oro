@@ -68,6 +68,25 @@ public class LocalFileStorage implements FileStorage {
         }
     }
 
+    /** every file under the root, but the ones whose name starts with a dot (uploads being received or written) */
+    @Override
+    public void forEachKey(java.time.Instant changedBefore, java.util.function.Consumer<String> key) throws IOException {
+        try (java.util.stream.Stream<Path> files = Files.walk(root)) {
+            files.filter(Files::isRegularFile)
+                    .filter(file -> java.util.stream.StreamSupport.stream(root.relativize(file).spliterator(), false)
+                            .noneMatch(part -> part.toString().startsWith(".")))
+                    .filter(file -> {
+                        try {
+                            return Files.getLastModifiedTime(file).toInstant().isBefore(changedBefore);
+                        } catch (IOException e) {
+                            return false;
+                        }
+                    })
+                    .map(file -> root.relativize(file).toString().replace(java.io.File.separatorChar, '/'))
+                    .forEach(key);
+        }
+    }
+
     @Override
     public void requireSpace(long bytes) {
         long usable;

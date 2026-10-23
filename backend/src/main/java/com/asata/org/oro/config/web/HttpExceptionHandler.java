@@ -3,6 +3,7 @@ package com.asata.org.oro.config.web;
 import com.asata.org.oro.dto.ErrorDTO;
 import com.asata.org.oro.exception.Conflict;
 import com.asata.org.oro.exception.PayloadTooLarge;
+import com.asata.org.oro.exception.Unprocessable;
 import com.asata.org.oro.exception.ServiceUnavailable;
 import com.asata.org.oro.exception.TooManyRequests;
 import com.asata.org.oro.exception.Forbidden;
@@ -87,6 +88,11 @@ public class HttpExceptionHandler {
         ResponseEntity<ErrorDTO> error = error(request, HttpStatus.SERVICE_UNAVAILABLE, e.getMessage(), null);
         return ResponseEntity.status(error.getStatusCode()).header(HttpHeaders.RETRY_AFTER, Long.toString(e.getRetryAfterSeconds()))
                 .body(error.getBody());
+    }
+
+    @ExceptionHandler(Unprocessable.class)
+    public ResponseEntity<ErrorDTO> unprocessable(Unprocessable e, HttpServletRequest request) {
+        return error(request, HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage(), null);
     }
 
     @ExceptionHandler(PayloadTooLarge.class)

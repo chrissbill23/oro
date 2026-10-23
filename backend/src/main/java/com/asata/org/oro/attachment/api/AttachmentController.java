@@ -1,12 +1,16 @@
 package com.asata.org.oro.attachment.api;
 
 import com.asata.org.oro.attachment.entity.Attachment;
+import com.asata.org.oro.attachment.file.FileTypes;
+import com.asata.org.oro.attachment.file.ImageMetadata;
+import com.asata.org.oro.attachment.scan.AttachmentScanning;
 import com.asata.org.oro.attachment.service.AttachmentQuota;
 import com.asata.org.oro.attachment.service.AttachmentService;
 import com.asata.org.oro.attachment.storage.FileStorage;
 import com.asata.org.oro.context.Actor;
 import com.asata.org.oro.enums.ScanStatus;
 import com.asata.org.oro.exception.Conflict;
+import com.asata.org.oro.exception.Unprocessable;
 import com.asata.org.oro.message.dto.MessageDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -21,6 +25,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Files;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
@@ -36,21 +43,25 @@ import java.util.regex.Pattern;
 @RestController
 public class AttachmentController implements AttachmentApi {
 
-    /** shown in the browser; anything else is downloaded (never an SVG or HTML inline: scripts) */
-    private static final Set<String> INLINE = Set.of("image/png", "image/jpeg", "image/gif", "image/webp");
     private static final Pattern MIME = Pattern.compile("[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*");
 
     private final AttachmentService attachments;
     private final AttachmentQuota quota;
+    private final AttachmentScanning scanning;
     private final ObjectProvider<FileStorage> storage;
     private final long maxSizeBytes;
     private final boolean scanless;
+    private final String multipartLocation;
 
-    public AttachmentController(AttachmentService attachments, AttachmentQuota quota, ObjectProvider<FileStorage> storage,
+    public AttachmentController(AttachmentService attachments, AttachmentQuota quota, AttachmentScanning scanning,
+                                ObjectProvider<FileStorage> storage,
                                 @Value("${oro.attachments.max-size-bytes:104857600}") long maxSizeBytes,
-                                @Value("${oro.attachments.scan:none}") String scan) {
+                                @Value("${oro.attachments.scan:none}") String scan,
+                                @Value("${spring.servlet.multipart.location:}") String multipartLocation) {
+        this.multipartLocation = multipartLocation;
         this.attachments = attachments;
         this.quota = quota;
+        this.scanning = scanning;
         this.storage = storage;
         this.maxSizeBytes = maxSizeBytes;
         this.scanless = "none".equals(scan);
@@ -65,30 +76,65 @@ public class AttachmentController implements AttachmentApi {
         // before anything is registered or stored: the quota of the user, then the space of the storage
         quota.check(actor.identityId(), file.getSize());
         files.requireSpace(file.getSize());
-        Attachment attachment = attachments.register(actor, conversationId, fileName(file.getOriginalFilename()),
-                mimeType(file.getContentType()), file.getSize());
-        FileStorage.Stored stored;
-        try (InputStream content = file.getInputStream()) {
-            stored = files.put(attachment.getStorageKey(), content, maxSizeBytes);
-        } catch (FileStorage.TooLarge e) {
-            throw new IllegalArgumentException(e.getMessage());
+        // the type of the bytes, not only the client's word: what is shown inline is an image indeed
+        String type;
+        try (InputStream head = file.getInputStream()) {
+            type = mimeType(FileTypes.resolve(mimeType(file.getContentType()), FileTypes.detect(head)));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        Attachment attachment = attachments.register(actor, conversationId, fileName(file.getOriginalFilename()), type,
+                file.getSize());
+        FileStorage.Stored stored;
+        Path cleaned = null;
+        try {
+            InputStream content;
+            if (ImageMetadata.cleans(type)) {
+                // a photo is stored without its metadata (where, when, with what): a copy, cleaned, then stored
+                cleaned = Files.createTempFile(temporaryDirectory(), ".clean-", ".tmp");
+                try (InputStream in = file.getInputStream(); OutputStream out = Files.newOutputStream(cleaned)) {
+                    ImageMetadata.strip(type, in, out);
+                }
+                content = Files.newInputStream(cleaned);
+            } else {
+                content = file.getInputStream();
+            }
+            try (content) {
+                stored = files.put(attachment.getStorageKey(), content, maxSizeBytes);
+            }
+        } catch (FileStorage.TooLarge e) {
+            throw new IllegalArgumentException(e.getMessage());
+        } catch (ImageMetadata.InvalidImage e) {
+            // nothing stored: the registered upload stays pending, purged within the hour
+            throw new IllegalArgumentException("The image could not be read (" + e.getMessage() + ")");
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } finally {
+            deleteQuietly(cleaned);
+        }
         attachments.markUploaded(attachment.getId(), stored.sizeBytes(), stored.sha256());
+        boolean available;
         if (scanless) {
             log.warn("attachment {} recorded clean without a malware scan (oro.attachments.scan: none)", attachment.getId());
             attachments.recordScan(attachment.getId(), ScanStatus.CLEAN);
+            available = true;
+        } else {
+            // fail closed: downloadable once the scanner said clean; pending (scanned again later) if it is away
+            ScanStatus scanned = scanning.scan(attachment.getId(), attachment.getStorageKey());
+            if (scanned == ScanStatus.INFECTED) {
+                throw new Unprocessable("The file was refused: the malware scan found a threat in it");
+            }
+            available = scanned == ScanStatus.CLEAN;
         }
         return new MessageDTO.AttachmentDTO(attachment.getId(), attachment.getFileName(), attachment.getMimeType(),
-                stored.sizeBytes(), scanless);
+                stored.sizeBytes(), available);
     }
 
     @Override
     public ResponseEntity<InputStreamResource> download(Actor actor, UUID attachmentId) {
         FileStorage files = requireStorage();
         Attachment attachment = attachments.requireDownloadable(actor, attachmentId);
-        boolean inline = INLINE.contains(attachment.getMimeType());
+        boolean inline = FileTypes.inline(attachment.getMimeType());
         InputStream content;
         try {
             content = files.open(attachment.getStorageKey());
@@ -104,6 +150,22 @@ public class AttachmentController implements AttachmentApi {
                 .header("Content-Security-Policy", "default-src 'none'; sandbox")
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=300")
                 .body(new InputStreamResource(content));
+    }
+
+    /** where the cleaned copies are written: where the uploads are received (the data volume), else the system's */
+    private Path temporaryDirectory() {
+        return multipartLocation == null || multipartLocation.isBlank()
+                ? Path.of(System.getProperty("java.io.tmpdir")) : Path.of(multipartLocation);
+    }
+
+    private static void deleteQuietly(Path file) {
+        if (file != null) {
+            try {
+                Files.deleteIfExists(file);
+            } catch (IOException e) {
+                log.warn("temporary file not deleted: {}", file.getFileName());
+            }
+        }
     }
 
     private FileStorage requireStorage() {
