@@ -15,8 +15,10 @@ You need Docker, and the repositories `1_ASATA_DATABASE` and `oro` side by side.
 2. **Write the settings** in `backend/.env.local` (git ignores it; never commit it):
 
    ```bash
-   UMOJA_INTEGRATION_KEY=...   # openssl rand -hex 32, the same as in umoja/backend/.env.local
-   ORO_INTEGRATION_KEY=...     # openssl rand -hex 32
+   # name:sha256 of each integration key, never the key: the key itself goes in umoja/backend/.env.local
+   #   KEY=$(openssl rand -hex 32); printf %s "$KEY" | shasum -a 256
+   UMOJA_INTEGRATION_KEYS=current:...
+   ORO_INTEGRATION_KEYS=current:...
    ```
 
    All the settings are listed in [Backend with Docker](../backend/README.md#backend-with-docker).

@@ -36,14 +36,17 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import jakarta.servlet.DispatcherType;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -151,16 +154,32 @@ public class SecurityConfig {
         return new NimbusJwtDecoder(processor);
     }
 
-    static Map<Product, byte[]> integrationKeys(SecurityProperties properties) {
-        Map<Product, byte[]> keys = new EnumMap<>(Product.class);
+    /** a key of an integration in the configuration: its name, then the SHA-256 of its value in hex */
+    static final Pattern INTEGRATION_KEY = Pattern.compile("([A-Za-z0-9._-]{1,32}):([0-9a-f]{64})");
+
+    /**
+     * the keys of the integrations, from oro.security.products.*.integration-keys ("name:sha256", several during a
+     * rotation). A name once per product; a key for one product only.
+     */
+    static List<IntegrationKeyFilter.IntegrationKey> integrationKeys(SecurityProperties properties) {
+        List<IntegrationKeyFilter.IntegrationKey> keys = new ArrayList<>();
+        Set<String> hashes = new HashSet<>();
         properties.getProducts().forEach((product, trust) -> {
-            if (trust.getIntegrationKey() == null || trust.getIntegrationKey().isBlank()) {
-                return;
+            Set<String> names = new HashSet<>();
+            for (String entry : trust.getIntegrationKeys() == null ? List.<String>of() : trust.getIntegrationKeys()) {
+                if (entry == null || entry.isBlank()) {
+                    continue;
+                }
+                Matcher key = INTEGRATION_KEY.matcher(entry.strip().toLowerCase(java.util.Locale.ROOT));
+                String where = "oro.security.products." + product + ".integration-keys";
+                if (!key.matches()) {
+                    throw new IllegalStateException(where + ": name:sha256 (the SHA-256 of the key in hex), never the key itself");
+                }
+                if (!names.add(key.group(1)) || !hashes.add(key.group(2))) {
+                    throw new IllegalStateException(where + ": a name once, a key for one product only");
+                }
+                keys.add(new IntegrationKeyFilter.IntegrationKey(product, key.group(1), HexFormat.of().parseHex(key.group(2))));
             }
-            if (trust.getIntegrationKey().length() < 32) {
-                throw new IllegalStateException("oro.security.products." + product + ".integration-key: 32 characters at least");
-            }
-            keys.put(product, trust.getIntegrationKey().getBytes(StandardCharsets.UTF_8));
         });
         return keys;
     }

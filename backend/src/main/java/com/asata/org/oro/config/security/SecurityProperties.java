@@ -38,8 +38,12 @@ public class SecurityProperties {
         private String jwkSet;
         /** Oro's name among the audience of the tokens of the product */
         private String audience = "oro";
-        /** the key of the trusted integration of the product (x-integration-key), at least 32 characters; unset: none */
-        private String integrationKey;
+        /**
+         * the keys of the trusted integration of the product (x-integration-key), as "name:sha256": a name for the logs,
+         * and the SHA-256 of the key in hex, never the key itself ({@code printf %s "$KEY" | shasum -a 256}). Several
+         * during a rotation; none: no integration
+         */
+        private List<String> integrationKeys = List.of();
     }
 
     public Optional<Product> productOfIssuer(String issuer) {

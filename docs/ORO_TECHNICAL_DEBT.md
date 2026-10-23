@@ -31,13 +31,15 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 - **Revisit**: with the secrets of production (`ORO-LCH-008`): the key in a secret store or a KMS, and a production
   profile that refuses to start without it; a scheduled rotation (`UMOJA_JWT_PREVIOUS_KEYS`).
 
-### Static integration keys
+### Integration keys over plain HTTP
 
-- **Today**: one key per product, in the environment, compared in constant time (`IntegrationKeyFilter`).
-- **Why**: enough for one integration on a private network.
-- **Risk**: no rotation without downtime, no way to tell keys apart, plain HTTP inside the network.
-- **Revisit**: rotation now (`ORO-SEC-006`); mTLS or signed requests when Oro and its products run on different
-  networks or hosts.
+- **Today**: named keys per product, kept as SHA-256 hashes, several at once for a rotation (`IntegrationKeyFilter`,
+  since 2026-10-23); a change of the list needs a restart of Oro. Umoja sends its key in a header, over plain HTTP on
+  the private network.
+- **Risk**: whoever can read the traffic of the private network reads the key; a key is a bearer secret, not bound to
+  a request.
+- **Revisit**: mTLS or signed requests (an HMAC of the request and a timestamp) when Oro and its products run on
+  different networks or hosts; reload the list without a restart if rotations become frequent.
 
 ## Data model
 

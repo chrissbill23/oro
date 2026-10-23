@@ -8,10 +8,12 @@ oro:
     products:
       # the public keys (TestTokens, new for each run) are set by PostgresIntegrationTest
       ORO:
-        integration-key: test-oro-integration-key-for-the-tests-0123456789
+        # the SHA-256 of test-oro-integration-key-for-the-tests-0123456789
+        integration-keys: test:cb423df979dc9082007cd5c2e75779a2a9084fe6f2d8dccf4b94e7e64d10470e
       UMOJA:
         jwk-set-uri: ""
-        integration-key: test-umoja-integration-key-for-the-tests-0123456789
+        # test-umoja-integration-key-for-the-tests-0123456789, and the next key of a rotation
+        integration-keys: current:7a7ef43de33ac9c192f8801d62e3de31a4d5b42e381e0da525c6440f7c28794d, next:584c7a3838c1ff924c227bf768f18e9f5e3799bf079255ed4be400e785d5cb38
   attachments:
     storage-provider: local
     local-dir: target/test-attachments

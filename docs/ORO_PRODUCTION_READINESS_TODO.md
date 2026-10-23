@@ -191,7 +191,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: curl from outside the host; Umoja's `OroIntegrationTest` and a manual synchronization
 
-- [ ] `ORO-SEC-006` — P0 — Rotate and revoke integration keys
+- [x] `ORO-SEC-006` — P0 — Rotate and revoke integration keys
+  - Done (2026-10-23): Oro keeps a list of named SHA-256 hashes per product (`UMOJA_INTEGRATION_KEYS=current:<hash>,next:<hash>`, `IntegrationKeyFilter`), compares the hash of the presented key in constant time with every one, logs the name of the key used and refused attempts without the key. Rotation and revocation in the backend README (Operations). Tested: `IntegrationKeyTest`, `IntegrationKeysConfigTest`. Still to do with `ORO-LCH-008`: the keys in a secret store, and a reload without restart if restarts become a problem.
   - Current state: Missing
   - Evidence: `SecurityProperties.ProductTrust.integrationKey` (one key per product),
     `IntegrationKeyFilter` (compares against that one key); `umoja/backend/src/main/resources/application.yml`

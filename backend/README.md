@@ -59,7 +59,7 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 |---|---|---|
 | `UMOJA_JWKS_URI` | `http://umoja:8080/umoja/.well-known/jwks.json` (`http://localhost:8081/…` outside Docker) | Where Umoja publishes the public keys of its tokens. Empty: Umoja users cannot call Oro |
 | `ORO_JWKS_URI` | none | The public keys of Oro's own account system (to come). Empty: Oro users cannot call |
-| `UMOJA_INTEGRATION_KEY`, `ORO_INTEGRATION_KEY` | none | Keys of the trusted integrations (`/internal`); 32 characters at least (`openssl rand -hex 32`) |
+| `UMOJA_INTEGRATION_KEYS`, `ORO_INTEGRATION_KEYS` | none | The keys of the trusted integrations (`/internal`) as `name:sha256`, comma separated: the SHA-256 of each key in hex, never the key (`printf %s "$KEY" \| shasum -a 256`); two during a [rotation](#rotating-an-integration-key). A key has 32 characters at least (`openssl rand -hex 32`) |
 | `ORO_PORT` | `8082` | Port on the host (8080 Mokili, 8081 Umoja) |
 | `ORO_DB_USERNAME`, `ORO_DB_PASSWORD` | `oro_api`, `oro_api_dev` | The API's login (`NOINHERIT`, a member of `oro_app` only, never a superuser) and its password |
 | `ORO_WORKER_DB_USERNAME`, `ORO_WORKER_DB_PASSWORD` | `oro_worker`, `oro_worker_dev` | The worker's login (`NOINHERIT`, a member of `oro_system` only) and its password |
@@ -105,6 +105,8 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `EmojisTest` | A reaction is one emoji whatever it is (skin tones, flags, ZWJ sequences); never text, digits, keycaps, a lone modifier nor several emojis |
 | `LiveHubTest` | The streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only; a stream ends with its token (30 minutes at most) with `reconnect`; closed by identity or organization, offline after |
 | `LiveAuthorizationTest` | Revocation, suspension and deactivation close the streams with their commit; the periodic check closes what changed elsewhere; a stream lasts as long as its token |
+| `IntegrationKeyTest` | During a rotation both keys open `/internal`; the logs name the key used, never the key; a key not listed, a short one or the stored hash itself is refused |
+| `IntegrationKeysConfigTest` | The keys are configured as `name:sha256` only: the key itself, a name twice or a key for two products is refused |
 | `JwkSetUriTest` | The public keys are read from where the product publishes them, at the first token then for a new `kid`: a rotation needs no restart; an unpublished key is refused |
 | `LogPrivacyTest` | A message refused by the database leaves its constraint in the logs, never its text nor the refused row |
 | `AttachmentTest` | Metadata is visible only to those who can read the message, even with the storage key; downloads need an uploaded and clean file; the API cannot mark a file clean; a sender can attach only their own uploads; a deleted message's files are hidden and marked for purge; file names cannot be paths |
@@ -132,7 +134,8 @@ carries an `x-request-id` header.
   only picks one of the user's current accesses (fed by Umoja); it never grants one. A missing header gets 400, an
   organization without access gets 403. Oro requests must not send the header.
 - **Trusted integrations** call `/internal` with `x-integration-key`. A key acts for its own product only, and user
-  tokens are refused there. `/internal` is for the private network only: a product's proxy never forwards it (Umoja's
+  tokens are refused there. Oro keeps only the SHA-256 of each key, named: the logs say which key authenticated
+  (`integration UMOJA authenticated with its key current`), and a refused key is logged without it. `/internal` is for the private network only: a product's proxy never forwards it (Umoja's
   nginx answers 404).
 - Clients name other users by their **user ID in their product** (`userId`), never by Oro's internal IDs.
 - Anything outside the caller's reach answers 404, never 403, so an ID reveals nothing.
@@ -173,7 +176,7 @@ carries an `x-request-id` header.
 # Umoja: Jordan's conversations in Acme (a token from the Umoja backend's login)
 curl -H "Authorization: Bearer $TOKEN" -H "x-organization-id: <organization id>" http://localhost:8082/oro/conversations
 # Umoja's integration: Amara joins Acme's conversations
-curl -X PUT -H "x-integration-key: $UMOJA_INTEGRATION_KEY" http://localhost:8082/oro/internal/organizations/<org>/members/<asata user id>
+curl -X PUT -H "x-integration-key: $UMOJA_INTEGRATION_KEY" http://localhost:8082/oro/internal/organizations/<org>/members/<asata user id>   # the key, as Umoja has it
 ```
 
 ## Team chats and the Umoja synchronization
@@ -549,6 +552,20 @@ queries stay single-partition) when one of these holds:
 Watch `pg_stat_user_tables` (dead tuples, vacuum times), the index sizes, and the p99 of the page and send queries.
 
 ## Operations
+
+### Rotating an integration key
+
+Oro accepts every key listed for a product, so a key changes without a failed request:
+
+1. Make the new key and its hash: `KEY=$(openssl rand -hex 32); printf %s "$KEY" | shasum -a 256`.
+2. Add it to Oro next to the current one, `UMOJA_INTEGRATION_KEYS=current:<old hash>,next:<new hash>`, and restart
+   Oro.
+3. Give the key to Umoja (`UMOJA_INTEGRATION_KEY` in `umoja/backend/.env.local`, or its secret store) and restart it.
+   The logs of Oro show `authenticated with its key next`.
+4. Remove the old hash from Oro (`UMOJA_INTEGRATION_KEYS=next:<new hash>`) and restart it.
+
+A key that leaked is revoked the same way, at once: its hash removed, Oro restarted. Rotate every 6 to 12 months, and
+whenever someone who knew a key leaves.
 
 - **Monitoring**: alert on any `failed` outbox event, and on the age of the oldest `pending` event (the outbox lag).
   Watch lock waits on `oro_conversation` (sends contending in one conversation).

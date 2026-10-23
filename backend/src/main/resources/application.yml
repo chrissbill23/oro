@@ -76,18 +76,20 @@ oro:
   security:
     cors-allowed-origins: ${ORO_CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:4201}
     products:
+      # integration-keys: the keys of each product's trusted integration (/internal), as name:sha256 (the SHA-256 of the
+      # key in hex, never the key: printf %s "$KEY" | shasum -a 256), comma separated; two during a rotation
       # each product signs the access tokens of its users (RS256) with its own private key; Oro reads its public keys
       # (a JWK set) and checks the issuer and the audience oro. Unset: that product's users cannot call Oro
       ORO:
         issuer: oro
         # Oro's account system, to come
         jwk-set-uri: ${ORO_JWKS_URI:}
-        integration-key: ${ORO_INTEGRATION_KEY:}
+        integration-keys: ${ORO_INTEGRATION_KEYS:}
       UMOJA:
         # as Umoja issues them: umoja.security.jwt.issuer, and its keys on /umoja/.well-known/jwks.json
         issuer: umoja
         jwk-set-uri: ${UMOJA_JWKS_URI:http://localhost:8081/umoja/.well-known/jwks.json}
-        integration-key: ${UMOJA_INTEGRATION_KEY:}
+        integration-keys: ${UMOJA_INTEGRATION_KEYS:}
   outbox:
     enabled: ${ORO_OUTBOX_ENABLED:true}
     poll-interval: PT1S

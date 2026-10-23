@@ -28,8 +28,9 @@ services:
       UMOJA_JWKS_URI: ${UMOJA_JWKS_URI:-http://umoja:8080/umoja/.well-known/jwks.json}
       ORO_JWKS_URI: ${ORO_JWKS_URI:-}
       # the keys of the trusted integrations of the products (/internal)
-      ORO_INTEGRATION_KEY: ${ORO_INTEGRATION_KEY:-}
-      UMOJA_INTEGRATION_KEY: ${UMOJA_INTEGRATION_KEY:-}
+      # name:sha256 of each key, comma separated (two during a rotation); never the keys themselves
+      ORO_INTEGRATION_KEYS: ${ORO_INTEGRATION_KEYS:-}
+      UMOJA_INTEGRATION_KEYS: ${UMOJA_INTEGRATION_KEYS:-}
       ORO_CORS_ALLOWED_ORIGINS: ${ORO_CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://localhost:4201}
     volumes:
       # the files of the attachments (local storage), kept across rebuilds
