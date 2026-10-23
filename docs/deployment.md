@@ -71,6 +71,7 @@ ORO_FILES_BACKUP_S3_SECRET=...
 EOF
 docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
 docker compose logs oro | grep "production settings checked"
+docker compose ps oro                             # "healthy": ready, the database answering
 ```
 
 Oro refuses to start in production on a setting of development (`ProductionChecks`): a placeholder or short password,
@@ -105,7 +106,8 @@ Caddy gets the certificate at its first start. Then check from outside: `https:/
      sh -c 'PSQL_ARGS="-U $POSTGRES_USER -d asata" sh /oro-schema/oro/migrate.sh'
    ```
 3. Then Oro: `git pull` and `docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build oro`.
-   The streams reconnect by themselves.
+   The stop is graceful (the streams told to reconnect, the requests in flight finished, 45 s at most), and the
+   streams reconnect by themselves. Wait for `healthy` (`docker compose ps oro`) before calling it done.
 
 ## Rollbacks
 

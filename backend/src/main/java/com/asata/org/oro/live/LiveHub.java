@@ -6,6 +6,7 @@ import com.asata.org.oro.exception.ServiceUnavailable;
 import com.asata.org.oro.exception.TooManyRequests;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.SmartLifecycle;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -34,10 +35,14 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * <p>
  * One instance only: the streams and the presence live in its memory. Several instances need a shared bus (PostgreSQL
  * LISTEN/NOTIFY, Redis) for the events and the presence.
+ * <p>
+ * On a stop, before the server stops taking requests (a phase above its graceful shutdown): every stream hears
+ * reconnect and is closed, and a new one is refused (503) until the end, so that the server does not wait for streams
+ * open 30 minutes. The clients come back to the next instance, or to this one restarted.
  */
 @Slf4j
 @Component
-public class LiveHub {
+public class LiveHub implements SmartLifecycle {
 
     /** a stream stays open this long, then the client opens a new one */
     static final Duration STREAM_TIMEOUT = Duration.ofMinutes(30);
@@ -57,6 +62,9 @@ public class LiveHub {
     private int maxStreamsPerUser = 5;
     /** the streams of this instance at most: the next gets 503 */
     private int maxStreams = 10_000;
+    /** stopping: the streams are closed, no new one */
+    private volatile boolean stopping;
+    private volatile boolean started;
 
     @org.springframework.beans.factory.annotation.Value("${oro.live.max-streams-per-user:5}")
     void setMaxStreamsPerUser(int maxStreamsPerUser) {
@@ -100,6 +108,9 @@ public class LiveHub {
      * others of its scope learn it is
      */
     public synchronized SseEmitter connect(Actor actor, String userId, Instant tokenExpiresAt) {
+        if (stopping) {
+            throw new ServiceUnavailable("Oro is restarting, try again in a few seconds", 5);
+        }
         // the limits first: a refused stream is never opened. Refusing the new one, not closing an old one: a closed
         // stream reconnects, and would close another, and so on
         if (connections.getOrDefault(actor.identityId(), Set.of()).size() >= maxStreamsPerUser) {
@@ -242,8 +253,38 @@ public class LiveHub {
         return connections.getOrDefault(identityId, Set.of()).stream().anyMatch(c -> c.scope().equals(scope));
     }
 
+    @Override
+    public void start() {
+        // a start after a stop too (the test framework pauses the contexts it keeps): streams accepted again
+        stopping = false;
+        started = true;
+    }
+
+    /** every stream told to reconnect and closed; none opened after (connect is synchronized with it) */
+    @Override
+    public void stop() {
+        List<Connection> open;
+        synchronized (this) {
+            stopping = true;
+            open = connections.values().stream().flatMap(Set::stream).toList();
+        }
+        open.forEach(connection -> close(connection, true));
+        log.info("stopping: {} streams told to reconnect", open.size());
+    }
+
+    @Override
+    public boolean isRunning() {
+        return started && !stopping;
+    }
+
+    /** before the graceful shutdown of the server (WebServerGracefulShutdownLifecycle), which waits for the streams */
+    @Override
+    public int getPhase() {
+        return Integer.MAX_VALUE;
+    }
+
     @PreDestroy
-    void stop() {
+    void stopExpirer() {
         expirer.shutdownNow();
     }
 

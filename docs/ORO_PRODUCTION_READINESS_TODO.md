@@ -519,8 +519,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: a staging run that triggers each alert
 
-- [ ] `ORO-LCH-011` — P1 — Readiness and liveness checks
-  - Partly done (2026-10-23): `/actuator/health/liveness` and `/readiness` (with the database) on the management port; left: wiring them to the orchestrator.
+- [x] `ORO-LCH-011` — P1 — Readiness and liveness checks
+  - Done (2026-10-24): readiness includes the database (both logins), liveness does not; a `HEALTHCHECK` in the image (`backend/docker/healthcheck.sh`): readiness is the status of the container, and three liveness failures in a row stop Oro, six kill it, so that Docker restarts it (Docker does not restart an unhealthy container by itself; `init: true` lets the check kill the JVM). Tested: `HealthTest`; on the local stack, a frozen JVM was restarted after 2 minutes, and the restarted one kept running.
   - Current state: Partially implemented (`/actuator/health`, public, no details)
   - Evidence: `application.yml` (`management.endpoint.health`); `oro/backend/Dockerfile` has no `HEALTHCHECK`.
   - Action: liveness and readiness groups (readiness includes the database); a `HEALTHCHECK` in the image or the
@@ -531,7 +531,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: stop the database on staging and watch the checks
 
-- [ ] `ORO-LCH-012` — P1 — Graceful shutdown with open streams and the outbox worker
+- [x] `ORO-LCH-012` — P1 — Graceful shutdown with open streams and the outbox worker
+  - Done (2026-10-24): `LiveHub` and `OutboxPoller` stop before the graceful shutdown of the server (a phase above it): every stream hears `reconnect` and is closed, a new one gets 503, the outbox claims nothing more and its batch finishes (10 s at most); then the requests in flight (20 s), the scheduled jobs left to finish; `stop_grace_period: 45s`. Tested: `LiveHubTest`, `OutboxPollerTest`; on the local stack, `docker stop` with a stream open took 1 s and the stream received `reconnect`. Left: a restart during a load test (`ORO-SCL-007`).
   - Current state: Unverified
   - Evidence: no `server.shutdown` setting in `application.yml` (Spring Boot defaults to graceful, to verify on
     4.1); streams last 30 minutes; `OutboxPoller` loops while batches are full.

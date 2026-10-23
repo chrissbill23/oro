@@ -53,6 +53,10 @@ services:
           - oro
     # until the shared database accepts connections
     restart: on-failure
+    # an init as PID 1: the health check can kill a stuck JVM, which the kernel would not let it do to PID 1
+    init: true
+    # a stop: the streams closed, the outbox stopped, the requests in flight finished (application.yml); then killed
+    stop_grace_period: 45s
     ports:
       # on this machine only: the browsers reach Oro through the proxy of a product (Umoja's nginx), and Umoja's backend
       # on the network asataDB; never published on every interface (/internal would be reachable)

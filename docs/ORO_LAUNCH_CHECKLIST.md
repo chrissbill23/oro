@@ -51,7 +51,7 @@ Two launches:
 - [ ] Alerts fire and reach me: 5xx rate, failed outbox events, outbox age over 1 minute, disk space, backup age,
       database down (`ORO-LCH-010`, `ORO-LCH-013`)
 - [ ] Errors reach an error tracker
-- [ ] Readiness and liveness checks are wired to the orchestrator (`ORO-LCH-011`)
+- [x] Readiness and liveness checks are wired to the orchestrator (`ORO-LCH-011`)
 
 ## 5. Deployment
 

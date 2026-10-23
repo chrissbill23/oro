@@ -168,7 +168,8 @@ carries an `x-request-id` header.
 
 | Route | What |
 |---|---|
-| `GET /ping`, `GET /actuator/health` | Status, public |
+| `GET /ping` | Status, public |
+| `GET /actuator/health/liveness`, `/readiness` | On the management port (9082) only, never published: the health check of the container |
 | `GET /doc`, `GET /doc/api` | Swagger UI, OpenAPI (only with `ORO_API_DOCS=true`) |
 | `GET /me` | The caller: identity, product, user ID, organization |
 | `GET /conversations` | The caller's active conversations in its context, latest first, with unread counts |
@@ -674,6 +675,22 @@ On 2026-10-23, a failed outbox event inserted by hand reached Alertmanager as `O
 once removed.
 
 ## Operations
+
+### Health and restarts
+
+The image checks itself every 15 s (`docker/healthcheck.sh`, on the management port):
+
+- **Readiness** (`/actuator/health/readiness`: accepting traffic, the database answering) is the status of the
+  container: `docker ps` shows `healthy` or `unhealthy`. A database down makes Oro unhealthy, never restarts it.
+- **Liveness** (`/actuator/health/liveness`: the process answers): Docker never restarts an unhealthy container by
+  itself, so once Oro has been up the check stops it after 3 failures in a row (about a minute) and kills it after 6;
+  Docker starts it again (its restart policy). The container runs with an init (`init: true`) for that.
+
+A stop (`docker stop`, a deployment, the check above) is graceful: every stream hears `reconnect` and is closed, new
+streams get 503 for the few seconds left, the outbox claims nothing more and finishes its batch (10 s at most), then
+the requests in flight finish (20 s at most). Docker waits 45 s (`stop_grace_period`) before it kills. The clients
+reconnect by themselves and read what they missed; an outbox event claimed and not completed is taken again after its
+lease (30 s).
 
 ### Rotating an integration key
 

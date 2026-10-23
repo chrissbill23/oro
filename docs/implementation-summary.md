@@ -60,13 +60,15 @@ Caddy in production ([Deployment](deployment.md)).
 - CI on GitHub Actions: the tests and the image on every push and pull request; `main` requires it to pass.
 - Production: Docker Compose on one server, secrets as Docker secret files, Caddy in front with HTTPS. Only ports 80
   and 443 are open.
+- Health: the container is healthy when Oro is ready (the database too), and restarted when Oro stops answering. A
+  stop is graceful: the streams are told to reconnect, the outbox finishes its batch, the requests in flight finish.
 
 ## Code and tests
 
 - 119 source files under `backend/src/main/java/com/asata/org/oro`: identity, conversation, message, attachment
   (storage, scan, purge), live, outbox, config (security, web, rate limits, metrics, production) and context (the
   database session).
-- 148 integration tests in 30 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- 152 integration tests in 32 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
 - Umoja already uses Oro: its frontend has a Messages page, and its backend sends its organizations and teams to Oro
@@ -77,8 +79,7 @@ Caddy in production ([Deployment](deployment.md)).
 - An account system for Oro, to issue the tokens of its users, and blocking and reporting between Oro users.
 - Deleting an account with its messages and files.
 - A written retention policy and privacy notice.
-- Liveness and readiness used by the containers, a tested graceful shutdown, a replay of failed events, a tested
-  catch-up after a reconnection, and runbooks.
+- A replay of failed events, a tested catch-up after a reconnection, and runbooks.
 - An alert receiver, the off-server backup buckets, and restore drills on a schedule.
 - Object storage for the files (not needed while they stay on a backed-up volume of one server).
 - Push notifications.

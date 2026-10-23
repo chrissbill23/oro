@@ -4,6 +4,9 @@ server:
   forward-headers-strategy: framework
   servlet:
     context-path: /oro
+  # on a stop (SIGTERM): the streams told to reconnect and closed, the outbox stopped (both before the server),
+  # then the requests in flight finished, 20 s at most. Docker waits 45 s before it kills (stop_grace_period)
+  shutdown: graceful
 info:
   app:
     name: '@project.name@'
@@ -12,6 +15,14 @@ info:
 spring:
   application:
     name: Oro - Messaging
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  task:
+    scheduling:
+      # a stop lets the jobs running (a scan, an outbox batch, a purge) finish instead of interrupting them
+      shutdown:
+        await-termination: true
+        await-termination-period: 10s
   servlet:
     multipart:
       # oro.attachments.max-size-bytes, and a little for the form
@@ -71,6 +82,11 @@ management:
       # /actuator/health/liveness and /readiness (readiness: the database too)
       probes:
         enabled: true
+      group:
+        # ready: accepting traffic and the database answering (both logins). Live: the process answers; a database
+        # down makes Oro not ready, never restarts it (backend/docker/healthcheck.sh)
+        readiness:
+          include: readinessState, db
   health:
     readinessstate:
       enabled: true

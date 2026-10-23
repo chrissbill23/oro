@@ -1,7 +1,7 @@
 # Oro in production, on a server with Docker Compose: over docker-compose.yml,
 #   docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
 # The production profile (ProductionChecks refuses a setting of development), the secrets as files (secrets/, git
-# ignored, mode 600: one per secret, see deploy/README.md), nothing published: the browsers reach Oro through the proxy
+# ignored, mode 600: one per secret, see docs/deployment.md), nothing published: the browsers reach Oro through the proxy
 # of a product (Umoja's nginx, behind Caddy), Prometheus and Alertmanager on 127.0.0.1 only (an SSH tunnel).
 services:
   oro:

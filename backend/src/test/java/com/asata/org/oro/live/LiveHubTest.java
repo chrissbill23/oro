@@ -189,4 +189,24 @@ class LiveHubTest {
                 .isInstanceOf(com.asata.org.oro.exception.ServiceUnavailable.class);
         assertThat(hub.openStreams()).isEqualTo(3);
     }
+
+    /** a stop of Oro: every stream hears reconnect and is closed, before the server stops; a new one is refused */
+    @Test
+    void aStopTellsEveryStreamToReconnectAndRefusesNewOnes() {
+        hub.start();
+        RecordingEmitter amara = connect(UUID.randomUUID(), "amara", ACME);
+        RecordingEmitter bob = connect(UUID.randomUUID(), "bob", GLOBEX);
+        assertThat(hub.isRunning()).isTrue();
+
+        hub.stop();
+
+        assertThat(amara.ofType("reconnect")).hasSize(1);
+        assertThat(bob.ofType("reconnect")).hasSize(1);
+        assertThat(hub.openStreams()).isZero();
+        assertThat(hub.isRunning()).isFalse();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> connect(UUID.randomUUID(), "kwame", ACME))
+                .isInstanceOf(com.asata.org.oro.exception.ServiceUnavailable.class);
+        // before the graceful shutdown of the server, which would wait for the streams
+        assertThat(hub.getPhase()).isGreaterThan(org.springframework.boot.web.server.context.WebServerGracefulShutdownLifecycle.SMART_LIFECYCLE_PHASE);
+    }
 }

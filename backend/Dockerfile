@@ -17,6 +17,11 @@ RUN ./mvnw -B -q -DskipTests package \
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 
+# curl: the health check only
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # layers from the least to the most frequently changing
 COPY --from=build /workspace/extracted/dependencies/ ./
 COPY --from=build /workspace/extracted/spring-boot-loader/ ./
@@ -26,6 +31,10 @@ COPY --from=build /workspace/extracted/application/ ./
 # the attachments of the local storage (a volume in docker-compose.yml)
 RUN mkdir -p /data/attachments && chown ubuntu:ubuntu /data/attachments
 ENV ORO_ATTACHMENTS_DIR=/data/attachments
+
+# readiness for the status, liveness to stop a stuck Oro (docker/healthcheck.sh); its start may take a minute
+COPY --chmod=755 docker/healthcheck.sh /usr/local/bin/oro-healthcheck
+HEALTHCHECK --interval=15s --timeout=12s --start-period=90s --retries=3 CMD ["oro-healthcheck"]
 
 USER ubuntu
 
