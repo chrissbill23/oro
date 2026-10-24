@@ -36,6 +36,7 @@ class MessageTest extends PostgresIntegrationTest {
         amaniActor = Actor.oro(amani);
         barakaActor = Actor.oro(baraka);
         direct = conversations.openDirect(amaniActor, baraka).getId();
+        acceptPending();
     }
 
     private long lastSeq() {

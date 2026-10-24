@@ -59,13 +59,14 @@ public class MessageService {
         validate(request);
         session.enterUser(actor);
         Conversation conversation = access.lockConversation(actor, conversationId);
-        ConversationMember mine = access.requireActiveMember(actor, conversation);
+        ConversationMember mine = access.requireAcceptedMember(actor, conversation);
         var existing = messages.findByConversationIdAndSenderIdAndClientMessageId(conversation.getId(),
                 actor.identityId(), request.clientMessageId());
         if (existing.isPresent()) {
             return new SendResult(existing.get(), true);
         }
         requireMembers(conversation.getId(), request.mentions());
+        requireReachable(actor, conversation);
         long seq = conversation.getLastMessageSeq() + 1;
         conversation.setLastMessageSeq(seq);
         // the seq first: the trigger of the message checks the conversation gave it
@@ -177,7 +178,8 @@ public class MessageService {
         }
         session.enterUser(actor);
         Message message = messages.findById(messageId).orElseThrow(() -> new NotFound("Message not found"));
-        access.requireActiveMember(actor, access.requireConversation(actor, message.getConversationId()));
+        // a pending member reads, never reacts
+        access.requireAcceptedMember(actor, access.requireConversation(actor, message.getConversationId()));
         if (message.isDeleted() || message.getType() == MessageType.SYSTEM) {
             throw new Conflict("This message takes no reaction");
         }
@@ -267,6 +269,32 @@ public class MessageService {
             throw new Conflict("The message is deleted");
         }
         return message;
+    }
+
+    /**
+     * a direct conversation of Oro: not blocked, not declined, and one message until a request is accepted (the
+     * database refuses the same; here the answers say why)
+     */
+    private void requireReachable(Actor actor, Conversation conversation) {
+        if (conversation.getType() != com.asata.org.oro.enums.ConversationType.DIRECT || conversation.getOrganizationId() != null) {
+            return;
+        }
+        UUID me = actor.identityId();
+        UUID other = me.equals(conversation.getDirectIdentityLow()) ? conversation.getDirectIdentityHigh() : conversation.getDirectIdentityLow();
+        if (Boolean.TRUE.equals(jdbc.queryForObject("SELECT oro_blocked(?, ?)", Boolean.class, me, other))) {
+            throw new com.asata.org.oro.exception.Forbidden(com.asata.org.oro.conversation.service.ConversationService.CANNOT_MESSAGE);
+        }
+        List<Boolean> pending = jdbc.queryForList("""
+                SELECT pending_since IS NOT NULL FROM oro_conversation_member
+                WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL""", Boolean.class, conversation.getId(), other);
+        if (pending.isEmpty()) {
+            throw new com.asata.org.oro.exception.Forbidden(com.asata.org.oro.conversation.service.ConversationService.CANNOT_MESSAGE);
+        }
+        if (pending.getFirst() && Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM oro_message WHERE conversation_id = ? AND sender_id = ?)", Boolean.class,
+                conversation.getId(), me))) {
+            throw new Conflict("Your request waits for an answer: one message until it is accepted");
+        }
     }
 
     /** a mention is an active member of the conversation: a client never shows a forged one */

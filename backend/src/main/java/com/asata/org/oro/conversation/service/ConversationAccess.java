@@ -40,6 +40,15 @@ public class ConversationAccess {
         return meters.timer("oro.conversation.lock").record(() -> inContext(actor, conversations.lockById(conversationId)));
     }
 
+    /** an active member that accepted its request or invitation: one that may send, react, type, add, rename */
+    public ConversationMember requireAcceptedMember(Actor actor, Conversation conversation) {
+        ConversationMember member = requireActiveMember(actor, conversation);
+        if (member.getPendingSince() != null) {
+            throw new com.asata.org.oro.exception.Conflict("Accept the request or the invitation first");
+        }
+        return member;
+    }
+
     public ConversationMember requireActiveMember(Actor actor, Conversation conversation) {
         return members.findActive(conversation.getId(), actor.identityId())
                 .orElseThrow(() -> new NotFound("Conversation not found"));

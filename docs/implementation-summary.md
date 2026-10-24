@@ -23,6 +23,8 @@ Caddy in production ([Deployment](deployment.md)).
 ## Security and privacy
 
 - A message carries mentions of members only: no link preview or system event forged by its sender.
+- In Oro, a stranger's first message is a request and a stranger's group an invitation, both accepted or declined;
+  people block each other and report messages (a copy kept 90 days).
 - Oro stores no password, email or credential. Each product signs the tokens of its users with its own private key
   (RS256) and publishes the public ones; Oro checks the signature, the issuer and the audience `oro`, and a token of
   one product is never accepted as the other's.
@@ -73,7 +75,7 @@ Caddy in production ([Deployment](deployment.md)).
 - 119 source files under `backend/src/main/java/com/asata/org/oro`: identity, conversation, message, attachment
   (storage, scan, purge), live, outbox, config (security, web, rate limits, metrics, production) and context (the
   database session).
-- 178 tests in 37 classes. The query plans on 10 million messages and the load test (about 1,000 people active at
+- 190 tests in 39 classes. The query plans on 10 million messages and the load test (about 1,000 people active at
   once on 2 CPUs, with 5,000 connected) are in `backend/perf`., on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
@@ -82,8 +84,8 @@ Caddy in production ([Deployment](deployment.md)).
 
 ## Not done yet
 
-- Phone accounts for Oro (email accounts work: sign-up, verification, sign-in, recovery), and
-  blocking and reporting between Oro users.
+- Phone accounts for Oro (email accounts work: sign-up, verification, sign-in, recovery), and a screen to review the
+  reports.
 - A privacy notice (the retention of deleted content is written: [Retention](retention.md)).
 - Who is on call, and the runbooks rehearsed on a staging server ([Runbooks](runbooks.md)).
 - An alert receiver, the off-server backup buckets, and restore drills on a schedule.

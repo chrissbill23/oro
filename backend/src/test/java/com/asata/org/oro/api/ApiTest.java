@@ -178,6 +178,12 @@ class ApiTest extends PostgresIntegrationTest {
         call(post("/conversations/" + direct + "/messages"), amani, null, send)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(messageId));
 
+        // Amani is a stranger to Baraka: a request, which Baraka reads, then accepts
+        call(get("/conversations"), baraka, null, null).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
+        call(get("/conversations/requests"), baraka, null, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(direct)).andExpect(jsonPath("$[0].invitedByUserId").value("oro-amani"));
+        call(post("/conversations/" + direct + "/accept"), baraka, null, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.pending").value(false));
         call(get("/conversations"), baraka, null, null).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(direct)).andExpect(jsonPath("$[0].unreadCount").value(1));
         call(get("/conversations/" + direct + "/messages"), baraka, null, null).andExpect(status().isOk())
@@ -273,13 +279,17 @@ class ApiTest extends PostgresIntegrationTest {
         call(get("/me"), baraka, null, null);
         call(get("/me"), chausiku, null, null);
         String group = idOf(call(post("/conversations/groups"), amani, null, "{\"name\":\"Family\",\"memberUserIds\":[\"oro-baraka\"]}"));
+        call(post("/conversations/" + group + "/accept"), baraka, null, null).andExpect(status().isOk());
         call(post("/conversations/" + group + "/messages"), amani, null,
                 "{\"clientMessageId\":\"client-0201\",\"type\":\"TEXT\",\"body\":\"Before Chausiku\"}");
 
         call(post("/conversations/" + group + "/members"), baraka, null, "{\"userId\":\"oro-chausiku\",\"shareHistory\":true}")
                 .andExpect(status().isForbidden());
         call(post("/conversations/" + group + "/members"), amani, null, "{\"userId\":\"oro-chausiku\",\"shareHistory\":false}")
-                .andExpect(status().isCreated()).andExpect(jsonPath("$.sharedHistory").value(false));
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.sharedHistory").value(false))
+                .andExpect(jsonPath("$.pending").value(true));
+        // a stranger to Amani: invited, it joins when it accepts
+        call(post("/conversations/" + group + "/accept"), chausiku, null, null).andExpect(status().isOk());
         // not the history: only what came since, the system message of its arrival
         call(get("/conversations/" + group + "/messages"), chausiku, null, null)
                 .andExpect(jsonPath("$.messages[*].type", contains("SYSTEM")))

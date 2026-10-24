@@ -5,7 +5,9 @@ public enum LeftReason implements CodedEnum {
     LEFT("left"),
     REMOVED("removed"),
     ACCESS_REVOKED("access_revoked"),
-    DEACTIVATED("deactivated");
+    DEACTIVATED("deactivated"),
+    /** a request or an invitation it did not accept */
+    DECLINED("declined");
 
     private final String code;
 

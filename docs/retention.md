@@ -33,12 +33,18 @@ or Umoja for one of its people (`POST /internal/identities/{userId}/erase`; Umoj
 |---|---|
 | Its identity | Deactivated at once: it leaves every conversation, its streams close, its token opens nothing |
 | Its messages | Deletions, within a minute (the erasure works a batch at a time): no text, no metadata, no reactions; their files purged |
-| Its reactions on the messages of others, its uploads never sent | Gone |
+| Its reactions on the messages of others, its uploads never sent, its blocks (made or received) | Gone |
 | The system messages that name it ("X joined, added by Y") and the mentions of it in the messages of others | Name `erased-<id>` instead: the others' texts stay, never marked edited |
 | Its identity at the end | Its external id becomes `erased-<id>`: nothing that stays links to the person |
 | Its Asata account, its Umoja and Mokili data | Untouched: Oro erases Oro's data only. It may come back to Oro, as someone new |
 
 Then the backups hold it for 21 days at most, as any deletion.
+
+## Reports
+
+A report (`POST /reports`) keeps a copy of the messages reported (their text, their sender as an internal id), for
+review, even if their sender deletes them or erases its data: **90 days**, then deleted (every hour). That is what lets
+harassment be acted on; it is the one place a deleted message lives on, for that long.
 
 ## What Oro does not hold
 

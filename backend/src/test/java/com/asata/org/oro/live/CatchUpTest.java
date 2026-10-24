@@ -77,6 +77,8 @@ class CatchUpTest extends PostgresIntegrationTest {
         get("/me", baraka);
         String direct = JsonPath.read(post("/conversations/direct", amani, "{\"userId\":\"oro-baraka\"}"), "$.id");
         send(direct, amani, "catch-up-0001", "Before the cut");
+        // Baraka accepts the request of Amani, a stranger
+        post("/conversations/" + direct + "/accept", baraka, "{}");
 
         // Amani's stream, then cut (a train in a tunnel)
         InputStream stream = openStream(amani);

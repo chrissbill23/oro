@@ -17,10 +17,31 @@ public class ConversationController implements ConversationApi {
 
     private final ConversationService conversations;
     private final IdentityService identities;
+    private final com.asata.org.oro.safety.BlockService blocks;
 
     @Override
     public List<ConversationSummary> list(Actor actor) {
         return conversations.list(actor);
+    }
+
+    @Override
+    public List<ConversationSummary> requests(Actor actor) {
+        return conversations.requests(actor);
+    }
+
+    @Override
+    public MemberDTO accept(Actor actor, UUID conversationId) {
+        ConversationMember mine = conversations.accept(actor, conversationId);
+        return memberDto(identities.externalIds(actor.product(), List.of(mine.getUserId())).get(mine.getUserId()), mine);
+    }
+
+    @Override
+    public void decline(Actor actor, UUID conversationId, boolean block) {
+        UUID inviter = block ? conversations.inviterOfPending(actor, conversationId) : null;
+        conversations.decline(actor, conversationId);
+        if (inviter != null) {
+            blocks.block(actor, inviter);
+        }
     }
 
     @Override
@@ -104,6 +125,6 @@ public class ConversationController implements ConversationApi {
 
     private static MemberDTO memberDto(String userId, ConversationMember member) {
         return new MemberDTO(userId, member.getRole(), member.isSharedHistory(), member.getJoinedAt(),
-                member.getLastReadSeq(), member.getLastReadAt());
+                member.getLastReadSeq(), member.getLastReadAt(), member.getPendingSince() != null);
     }
 }

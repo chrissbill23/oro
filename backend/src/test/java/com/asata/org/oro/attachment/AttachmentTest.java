@@ -38,6 +38,7 @@ class AttachmentTest extends PostgresIntegrationTest {
         barakaActor = Actor.oro(baraka);
         chausikuActor = Actor.oro(oroUser("chausiku"));
         direct = conversations.openDirect(amaniActor, baraka).getId();
+        acceptPending();
     }
 
     private Attachment cleanUpload(Actor actor) {

@@ -141,8 +141,13 @@ public class HttpExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorDTO> internal(Exception e, HttpServletRequest request) {
-        // no connection free within its timeout (Oro saturated): busy, not broken; the client retries
+        // no connection free within its timeout (Oro saturated): busy, not broken; the client retries. A rule of the
+        // database on who may do what (insufficient_privilege): refused, not broken
         for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLException sql && "42501".equals(sql.getSQLState())) {
+                log.info("refused by a rule of the database on {}", request.getRequestURI());
+                return error(request, HttpStatus.FORBIDDEN, "You are not allowed to do this operation", null);
+            }
             if (cause instanceof java.sql.SQLTransientConnectionException) {
                 log.warn("no database connection free for {}: 503", request.getRequestURI());
                 return serviceUnavailable(new ServiceUnavailable("Oro is busy, try again in a few seconds", 2), request);

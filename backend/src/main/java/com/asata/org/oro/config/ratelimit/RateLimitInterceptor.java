@@ -49,7 +49,9 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             new Rule(HttpMethod.POST, "/conversations/*/members", "add-member"),
             new Rule(HttpMethod.POST, "/conversations/*/attachments", "upload"),
             new Rule(HttpMethod.GET, "/stream", "stream"),
-            new Rule(HttpMethod.POST, "/me/erase", "erase"));
+            new Rule(HttpMethod.POST, "/me/erase", "erase"),
+            new Rule(HttpMethod.POST, "/reports", "report"),
+            new Rule(HttpMethod.PUT, "/blocks/*", "block"));
 
     /** the public routes of the accounts, per client address */
     private static final List<Rule> ANONYMOUS_RULES = List.of(

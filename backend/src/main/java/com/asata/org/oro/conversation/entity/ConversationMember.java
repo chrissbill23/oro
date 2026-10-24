@@ -78,6 +78,10 @@ public class ConversationMember {
     @Column(name = "left_reason", length = 16)
     private LeftReason leftReason;
 
+    /** a request or an invitation not accepted yet (the database decides it, ORO-SEC-013) */
+    @Column(name = "pending_since", insertable = false, updatable = false)
+    private OffsetDateTime pendingSince;
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private OffsetDateTime updatedAt;
 

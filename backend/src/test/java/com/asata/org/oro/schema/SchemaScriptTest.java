@@ -29,8 +29,8 @@ class SchemaScriptTest extends PostgresIntegrationTest {
                 SELECT relname, relrowsecurity, pg_get_userbyid(relowner) AS owner FROM pg_class
                 WHERE relname LIKE 'oro\\_%' AND relkind = 'r' ORDER BY relname""");
         assertThat(tables).extracting(t -> t.get("relname")).containsExactly("oro_attachment", "oro_conversation",
-                "oro_conversation_member", "oro_erasure", "oro_message", "oro_message_reaction", "oro_messaging_identity", "oro_organization_access",
-                "oro_organization_sync", "oro_outbox_event");
+                "oro_conversation_member", "oro_erasure", "oro_identity_block", "oro_message", "oro_message_reaction", "oro_messaging_identity", "oro_organization_access",
+                "oro_organization_sync", "oro_outbox_event", "oro_report");
         assertThat(tables).allSatisfy(t -> {
             assertThat(t.get("relrowsecurity")).isEqualTo(true);
             assertThat(t.get("owner")).isEqualTo("oro_owner");

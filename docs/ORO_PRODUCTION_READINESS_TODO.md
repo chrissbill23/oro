@@ -300,7 +300,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker
   - Verification: `MessagingApiTest` upload over the quota
 
-- [ ] `ORO-SEC-013` — P0 — Who may message whom in Oro: blocking, message requests, reporting
+- [x] `ORO-SEC-013` — P0 — Who may message whom in Oro: blocking, message requests, reporting
+  - Done (2026-10-24): decided: a stranger's first direct message waits in the requests (one message until accepted), a stranger's group is an invitation, reports keep a copy 90 days. Knowing someone (`oro_knows`): a group shared, or having written to them or accepted their request. Blocks both ways (direct conversations, groups), requests and invitations accepted or declined (`V2`: the reason declined), reports by the server's copy (`oro_report`, never read by the API, deleted at 90 days). The rules in the database (the triggers of the members and the messages) and in the services (their answers). Tested: `SafetyTest` (8); on the local stack. Left: the review of the reports (`ORO-FEA-005`).
   - Current state: Confirmed gap (Oro only)
   - Evidence: `ConversationService.openDirect` and `createGroup` accept any active identity of the product; for Umoja
     the organization access limits this, for Oro nothing does.
@@ -817,6 +818,7 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Verification: RLS tests on the quoted message
 
 - [ ] `ORO-FEA-005` — P3 — Reporting and review of abuse
+  - Partly done (2026-10-24): the reports are recorded with a copy of the messages (`ORO-SEC-013`); reviewing them is a query of the runbooks. Left: a review screen for the moderators, actions from it.
   - Current state: Missing
   - Evidence: no report endpoint.
   - Action: part of `ORO-SEC-013`: a report stores the reported messages as they were, and a small review tool for

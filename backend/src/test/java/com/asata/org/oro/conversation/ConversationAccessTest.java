@@ -49,6 +49,7 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     @Test
     void aUserCannotReadAConversationTheyDoNotBelongTo() {
         Conversation direct = conversations.openDirect(amaniActor, baraka);
+        acceptPending();
         say(amaniActor, direct.getId(), "Just for Baraka");
 
         assertThatThrownBy(() -> messages.page(chausikuActor, direct.getId(), null, 20)).isInstanceOf(NotFound.class);
@@ -68,8 +69,10 @@ class ConversationAccessTest extends PostgresIntegrationTest {
         UUID bob = umojaUser("bob", GLOBEX);
         Actor jordanActor = Actor.umoja(jordan, ACME);
         Conversation design = conversations.createGroup(jordanActor, "Design", null, List.of(amara));
+        acceptPending();
         say(jordanActor, design.getId(), "Acme only");
         Conversation globex = conversations.createGroup(Actor.umoja(bob, GLOBEX), "Globex", null, List.of());
+        acceptPending();
 
         // Bob, in his organization or claiming Acme: nothing
         assertThatThrownBy(() -> messages.page(Actor.umoja(bob, GLOBEX), design.getId(), null, 20)).isInstanceOf(NotFound.class);
@@ -86,6 +89,7 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     @Test
     void aMemberWhoLeavesCanNoLongerReadNorSendNorComeBackAlone() {
         Conversation family = conversations.createGroup(amaniActor, "Family", null, List.of(baraka, chausiku));
+        acceptPending();
         say(amaniActor, family.getId(), "Before leaving");
 
         conversations.leave(chausikuActor, family.getId());
@@ -107,6 +111,7 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     @Test
     void aRemovedMemberLosesAccessAndARejoinFollowsTheHistoryChoice() {
         Conversation family = conversations.createGroup(amaniActor, "Family", null, List.of(baraka));
+        acceptPending();
         say(amaniActor, family.getId(), "One");
         say(amaniActor, family.getId(), "Two");
 
@@ -116,7 +121,9 @@ class ConversationAccessTest extends PostgresIntegrationTest {
         say(amaniActor, family.getId(), "Three, while Baraka is away");
 
         // added back, privacy first: only what comes next (the system messages of the removal, 3, and of the return, 5)
+        // no longer in a group together: invited again, it joins when it accepts
         ConversationMember back = conversations.addMember(amaniActor, family.getId(), baraka, false);
+        conversations.accept(barakaActor, family.getId());
         assertThat(back.getHistoryFromSeq()).isEqualTo(4);
         say(amaniActor, family.getId(), "Four");
         assertThat(seqs(barakaActor, family.getId())).containsExactly(6L, 5L);
@@ -128,11 +135,15 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     @Test
     void theAdminChoosesWhetherANewMemberSeesTheHistory() {
         Conversation family = conversations.createGroup(amaniActor, "Family", null, List.of());
+        acceptPending();
         say(amaniActor, family.getId(), "One");
         say(amaniActor, family.getId(), "Two");
 
+        // strangers to Amani: invited, they join when they accept (the system messages of their arrivals)
         conversations.addMember(amaniActor, family.getId(), baraka, true);
+        conversations.accept(barakaActor, family.getId());
         conversations.addMember(amaniActor, family.getId(), chausiku, false);
+        conversations.accept(chausikuActor, family.getId());
         say(amaniActor, family.getId(), "Three");
 
         // 3 and 4: the system messages of their arrivals
@@ -150,7 +161,9 @@ class ConversationAccessTest extends PostgresIntegrationTest {
         UUID amara = umojaUser("amara", ACME, GLOBEX);
         Actor amaraActor = Actor.umoja(amara, ACME);
         Conversation design = conversations.createGroup(Actor.umoja(jordan, ACME), "Design", null, List.of(amara));
+        acceptPending();
         Conversation globex = conversations.createGroup(Actor.umoja(jordan, GLOBEX), "Globex", null, List.of(amara));
+        acceptPending();
 
         organizationAccess.revoke(amara, ACME);
 
@@ -167,7 +180,9 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     @Test
     void aDeactivatedIdentityLeavesEverything() {
         Conversation direct = conversations.openDirect(amaniActor, baraka);
+        acceptPending();
         Conversation family = conversations.createGroup(amaniActor, "Family", null, List.of(baraka));
+        acceptPending();
 
         identities.deactivate(baraka);
 
@@ -183,6 +198,7 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     @Test
     void aSuspendedIdentityKeepsItsMembershipsButReadsNothing() {
         Conversation direct = conversations.openDirect(amaniActor, baraka);
+        acceptPending();
         say(amaniActor, direct.getId(), "Hello");
 
         identities.suspend(baraka);
@@ -220,7 +236,9 @@ class ConversationAccessTest extends PostgresIntegrationTest {
         UUID amara = umojaUser("amara", ACME, GLOBEX);
 
         Conversation acme = conversations.openDirect(Actor.umoja(jordan, ACME), amara);
+        acceptPending();
         Conversation globex = conversations.openDirect(Actor.umoja(jordan, GLOBEX), amara);
+        acceptPending();
 
         assertThat(acme.getId()).isNotEqualTo(globex.getId());
         assertThat(conversations.openDirect(Actor.umoja(amara, ACME), jordan).getId()).isEqualTo(acme.getId());
@@ -230,6 +248,7 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     @Test
     void unreadCountsComeFromTheReadPosition() {
         Conversation direct = conversations.openDirect(amaniActor, baraka);
+        acceptPending();
         for (int i = 1; i <= 3; i++) {
             say(barakaActor, direct.getId(), "Message " + i);
         }
@@ -250,7 +269,9 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     void theOwnerWhoLeavesPassesTheOwnershipOn() {
         // the first who joined succeeds (members added together tie, then the id decides)
         Conversation family = conversations.createGroup(amaniActor, "Family", null, List.of(baraka));
+        acceptPending();
         conversations.addMember(amaniActor, family.getId(), chausiku, true);
+        acceptPending();
 
         conversations.leave(amaniActor, family.getId());
 
@@ -262,6 +283,7 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     @Test
     void aSystemMessageTellsOnlyWhatHappened() {
         Conversation family = conversations.createGroup(amaniActor, "Family", null, List.of(baraka, chausiku));
+        acceptPending();
         UUID id = family.getId();
         String post = "SELECT message_id FROM oro_post_system_message(?, ?, ?)";
 
@@ -292,7 +314,9 @@ class ConversationAccessTest extends PostgresIntegrationTest {
     void theRolesAreTheDatabasesToCheckToo() {
         UUID dede = oroUser("dede");
         Conversation family = conversations.createGroup(amaniActor, "Family", null, List.of(baraka, chausiku));
+        acceptPending();
         Conversation direct = conversations.openDirect(amaniActor, baraka);
+        acceptPending();
         UUID id = family.getId();
         // Chausiku administers the group (as the owner would make her)
         asUser(amaniActor, jdbc -> jdbc.update(

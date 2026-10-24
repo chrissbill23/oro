@@ -11,12 +11,13 @@ import java.util.UUID;
 /**
  * A conversation of the list of a user. unreadCount = lastMessageSeq - its lastReadSeq (no count of rows).
  * otherUserId: the other one of a direct conversation; teamId: the team of a team chat (Umoja); role: the caller's.
- * lastMessage: the last one the caller may read, null when there is none.
+ * lastMessage: the last one the caller may read, null when there is none. invitedByUserId: in the requests and
+ * invitations only (GET /conversations/requests), who asked: the opener of the direct conversation, the adder.
  */
 public record ConversationSummary(UUID id, ConversationType type, String name, UUID teamId, String otherUserId,
                                   long memberCount, long lastMessageSeq, OffsetDateTime lastMessageAt,
                                   OffsetDateTime createdAt, long unreadCount, OffsetDateTime mutedUntil, MemberRole role,
-                                  LastMessage lastMessage) {
+                                  LastMessage lastMessage, String invitedByUserId) {
 
     /** the preview of a message: its first 200 characters; metadata: of a system message only (what happened) */
     public record LastMessage(UUID id, long seq, String senderUserId, MessageType type, String body,

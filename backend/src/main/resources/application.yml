@@ -210,6 +210,8 @@ oro:
       email-to: { per-minute: 1, burst: 3 }
       # a person erasing its data (its password checked)
       erase: { per-minute: 3, burst: 3 }
+      report: { per-minute: 10, burst: 10 }
+      block: { per-minute: 30, burst: 20 }
   # the erasures asked (a person's data, ErasureService): carried out every interval, a batch at a time
   erasure:
     enabled: ${ORO_ERASURE_ENABLED:true}

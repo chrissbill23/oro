@@ -21,6 +21,23 @@ public interface ConversationApi {
     @GetMapping
     List<ConversationSummary> list(@Parameter(hidden = true) Actor actor);
 
+    @Operation(summary = "My requests and invitations (Oro)",
+            description = "The direct conversations of people I do not know and the groups they invited me to: I read "
+                    + "them, then accept or decline; invitedByUserId says who asked")
+    @GetMapping("/requests")
+    List<ConversationSummary> requests(@Parameter(hidden = true) Actor actor);
+
+    @Operation(summary = "Accept a request or an invitation", description = "A member like the others from now on")
+    @PostMapping("/{conversationId}/accept")
+    MemberDTO accept(@Parameter(hidden = true) Actor actor, @PathVariable UUID conversationId);
+
+    @Operation(summary = "Decline a request or an invitation",
+            description = "No longer a member; block: the one who asked is blocked too (no new request from them)")
+    @PostMapping("/{conversationId}/decline")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void decline(@Parameter(hidden = true) Actor actor, @PathVariable UUID conversationId,
+                 @org.springframework.web.bind.annotation.RequestParam(defaultValue = "false") boolean block);
+
     @Operation(summary = "Open a direct conversation",
             description = "With another user of the product (and organization); the existing one if there is one")
     @PostMapping("/direct")

@@ -115,6 +115,7 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction; the API's login never takes `oro_system`, and each context only on its own login; slow statements and long lock waits end |
 | `CatchUpTest` | Over HTTP: a stream cut, two messages sent meanwhile, the stream back; the list and `?after=` give what was missed |
+| `SafetyTest` | A stranger's request (one message, accepted), people of a group are no strangers, decline and block, a block both ways and on groups (the database too), invitations, a report kept after the sender deletes, purged at 90 days, never read by the API; blocks erased with their person |
 | `ErasureTest` | An erasure by Umoja and by the person: its messages deletions, its reactions and uploads gone, the mentions and system messages anonymous and not marked edited, nothing names it; idempotent; the person comes back as someone new; the flag of the erasure hides no user's edit |
 | `PasswordResetTest` | A reset by link ends every session (Umoja's too), unlocks and verifies; the same answer for an unknown address; a verification link resets nothing; the limits per address and per recipient |
 | `SignUpTest` | Sign-up, the address verified before sign-in, the same answer and a notice for a known address, a taken username, the links single use and for their address only, a new link only when awaited |
@@ -253,6 +254,28 @@ wrong passwords). Oro signs their access tokens itself (`account/`):
   some columns of `asata_user`, `asata_user_credential` and `asata_user_refresh_token`, nothing of the messaging. The
   logins of the messaging never read a password (`AccountTest`).
 - **Not yet**: phone accounts (an SMS provider to choose, `asata_user` to allow an account without an email).
+
+## Who can reach whom (Oro)
+
+Umoja's organizations decide who meets whom there. In Oro (personal), anyone could otherwise reach anyone:
+
+- **Requests**: someone who does not know the recipient opens a direct conversation, and its first message waits in
+  the recipient's requests (`GET /conversations/requests`, with `invitedByUserId`): read, then accepted
+  (`POST /conversations/{id}/accept`) or declined (`POST /conversations/{id}/decline`, `?block=true` to block too).
+  One message until then. Knowing someone (`oro_knows`): sharing a group (both accepted), or having written to them
+  first, or accepted their request.
+- **Invitations**: a group of someone the member does not know is an invitation, in the same list: it reads the
+  group, sends nothing, joins when it accepts (the system message "joined" then).
+- **Blocks** (`PUT`, `DELETE /blocks/{userId}`, `GET /blocks`): neither opens a direct conversation with the other nor
+  sends in one, nor adds the other to a group; a waiting request of the blocked one is declined. The blocked one is not
+  told, only refused ("You cannot message this person", the same whoever blocked whom); the blocks are seen by their
+  author only.
+- **Reports** (`POST /reports` `{conversationId, messageIds, category, reason}`, Oro and Umoja): 1 to 20 messages the
+  caller reads, a request included; the server keeps a copy for 90 days ([Retention](../docs/retention.md)). The API
+  writes reports and never reads them: the reviewers read `oro_report` (runbooks, Reviewing reports).
+
+The database decides it too (the triggers of the members and the messages, `oro_blocked`, `oro_knows`): a membership
+of a stranger is created pending, a message refused while pending, blocked, declined, or after the first of a request.
 
 ## Rate limits
 

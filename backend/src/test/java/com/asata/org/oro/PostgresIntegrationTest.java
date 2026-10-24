@@ -143,6 +143,14 @@ public abstract class PostgresIntegrationTest {
         rateLimiter.reset();
     }
 
+    /**
+     * the people of the test know each other (ORO-SEC-013): every request and invitation accepted, as the superuser.
+     * The tests of the requests themselves do without
+     */
+    protected void acceptPending() {
+        admin.update("UPDATE oro_conversation_member SET pending_since = NULL WHERE pending_since IS NOT NULL");
+    }
+
     protected UUID oroUser(String name) {
         return identities.provision(Product.ORO, "oro-" + name);
     }

@@ -209,6 +209,19 @@ A stolen account, someone who must lose access now.
   bucket's keys first (the bucket is the other half); then a new repository with a new passphrase, a full backup,
   and the old repository deleted once the new one is checked.
 
+### Reviewing reports
+
+Until a screen exists (`ORO-FEA-005`), the reports are read in the database, as its superuser:
+
+```sql
+SELECT r.created_at, r.category, r.reason, i.external_user_id AS reported, r.messages
+FROM oro_report r LEFT JOIN oro_messaging_identity i ON i.id = r.reported_id
+WHERE r.status = 'open' ORDER BY r.created_at;
+```
+
+Acting on one: suspend the account (Revoke a user at once), or erase its data; then
+`UPDATE oro_report SET status = 'reviewed' WHERE id = '<id>';`. A report goes after 90 days whatever its status.
+
 ## Planned operations
 
 ### Deploy, upgrade

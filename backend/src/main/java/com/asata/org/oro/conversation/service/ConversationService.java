@@ -33,6 +33,9 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ConversationService {
 
+    /** the same answer whoever blocked whom */
+    public static final String CANNOT_MESSAGE = "You cannot message this person";
+
     private final DbSession session;
     private final EntityManager em;
     private final JdbcTemplate jdbc;
@@ -58,6 +61,9 @@ public class ConversationService {
             throw new Conflict("A direct conversation is between two identities");
         }
         access.requireActiveIdentity(otherIdentityId);
+        if (actor.organizationId() == null && Boolean.TRUE.equals(jdbc.queryForObject("SELECT oro_blocked(?, ?)", Boolean.class, me, otherIdentityId))) {
+            throw new Forbidden(CANNOT_MESSAGE);
+        }
         jdbc.update("""
                 INSERT INTO oro_conversation(id, product_id, context_type, organization_id, conversation_type,
                                              direct_identity_low, direct_identity_high, created_by, created_at)
@@ -125,7 +131,7 @@ public class ConversationService {
     public ConversationMember addMember(Actor actor, UUID conversationId, UUID identityId, boolean shareHistory) {
         session.enterUser(actor);
         Conversation group = requireGroup(actor, conversationId);
-        ConversationMember mine = access.requireActiveMember(actor, group);
+        ConversationMember mine = access.requireAcceptedMember(actor, group);
         if (!mine.canManageMembers()) {
             throw new Forbidden("Only the owner and the admins add members");
         }
@@ -133,11 +139,63 @@ public class ConversationService {
         if (members.findActive(group.getId(), identityId).isPresent()) {
             throw new Conflict("Already a member");
         }
+        if (actor.organizationId() == null
+                && Boolean.TRUE.equals(jdbc.queryForObject("SELECT oro_blocked(?, ?)", Boolean.class, identityId, actor.identityId()))) {
+            throw new Forbidden(CANNOT_MESSAGE);
+        }
         ConversationMember member = addMemberRow(group, identityId, MemberRole.MEMBER, shareHistory, actor.identityId());
         outbox.add(actor.product(), "member.added", "conversation", group.getId(),
                 Map.of("conversationId", group.getId(), "memberId", identityId, "addedBy", actor.identityId()));
-        systemMessages.member(group.getId(), actor.product(), SystemMessages.JOINED, identityId);
+        // someone who does not know the adder is invited: it joins when it accepts
+        if (member.getPendingSince() == null) {
+            systemMessages.member(group.getId(), actor.product(), SystemMessages.JOINED, identityId);
+        }
         return member;
+    }
+
+    /** a request or an invitation accepted: a member like the others (a group says it joined) */
+    @Transactional
+    public ConversationMember accept(Actor actor, UUID conversationId) {
+        session.enterUser(actor);
+        Conversation conversation = access.requireConversation(actor, conversationId);
+        ConversationMember mine = access.requireActiveMember(actor, conversation);
+        if (mine.getPendingSince() == null) {
+            throw new Conflict("Nothing to accept");
+        }
+        jdbc.update("UPDATE oro_conversation_member SET pending_since = NULL WHERE id = ?", mine.getId());
+        em.refresh(mine);
+        outbox.add(actor.product(), "member.accepted", "conversation", conversation.getId(),
+                Map.of("conversationId", conversation.getId(), "memberId", actor.identityId()));
+        if (conversation.getType() == ConversationType.GROUP) {
+            systemMessages.member(conversation.getId(), actor.product(), SystemMessages.JOINED, actor.identityId());
+        }
+        return mine;
+    }
+
+    /** who asked: the opener of a direct conversation, the adder in a group; the actor's membership must be pending */
+    @Transactional(readOnly = true)
+    public UUID inviterOfPending(Actor actor, UUID conversationId) {
+        session.enterUser(actor);
+        Conversation conversation = access.requireConversation(actor, conversationId);
+        ConversationMember mine = access.requireActiveMember(actor, conversation);
+        if (mine.getPendingSince() == null) {
+            throw new Conflict("Nothing to decline");
+        }
+        return conversation.getType() == ConversationType.DIRECT ? conversation.getCreatedBy() : mine.getAddedBy();
+    }
+
+    /** a request or an invitation declined: no longer a member; the other may ask again, unless blocked */
+    @Transactional
+    public void decline(Actor actor, UUID conversationId) {
+        session.enterUser(actor);
+        Conversation conversation = access.requireConversation(actor, conversationId);
+        ConversationMember mine = access.requireActiveMember(actor, conversation);
+        if (mine.getPendingSince() == null) {
+            throw new Conflict("Nothing to decline");
+        }
+        end(mine, LeftReason.DECLINED);
+        outbox.add(actor.product(), "member.declined", "conversation", conversation.getId(),
+                Map.of("conversationId", conversation.getId(), "memberId", actor.identityId()));
     }
 
     /** the actor leaves a group (a direct conversation cannot be left); an owner leaving passes the ownership on */
@@ -165,7 +223,7 @@ public class ConversationService {
     public void removeMember(Actor actor, UUID conversationId, UUID identityId) {
         session.enterUser(actor);
         Conversation group = requireGroup(actor, conversationId);
-        ConversationMember mine = access.requireActiveMember(actor, group);
+        ConversationMember mine = access.requireAcceptedMember(actor, group);
         if (!mine.canManageMembers()) {
             throw new Forbidden("Only the owner and the admins remove members");
         }
@@ -206,6 +264,16 @@ public class ConversationService {
      */
     @Transactional(readOnly = true)
     public List<ConversationSummary> list(Actor actor) {
+        return list(actor, false);
+    }
+
+    /** the requests and invitations waiting for the actor's answer (Oro): read, then accepted or declined */
+    @Transactional(readOnly = true)
+    public List<ConversationSummary> requests(Actor actor) {
+        return list(actor, true);
+    }
+
+    private List<ConversationSummary> list(Actor actor, boolean pending) {
         session.enterUser(actor);
         String sql = """
                 SELECT c.id, c.conversation_type, c.name, c.team_id, c.last_message_seq, c.last_message_at, c.created_at,
@@ -215,16 +283,19 @@ public class ConversationService {
                        lm.id AS lm_id, lm.seq AS lm_seq, sender.external_user_id AS lm_sender, lm.message_type AS lm_type,
                        left(lm.body, 200) AS lm_body,
                        CASE WHEN lm.message_type = 'system' THEN lm.metadata::text END AS lm_metadata,
-                       lm.deleted_at IS NOT NULL AS lm_deleted, lm.created_at AS lm_created_at
+                       lm.deleted_at IS NOT NULL AS lm_deleted, lm.created_at AS lm_created_at,
+                       CASE WHEN m.pending_since IS NOT NULL THEN inviter.external_user_id END AS invited_by
                 FROM oro_conversation_member m
                 JOIN oro_conversation c ON c.id = m.conversation_id
                 LEFT JOIN oro_messaging_identity other ON c.conversation_type = 'direct'
                      AND other.id = CASE WHEN c.direct_identity_low = m.user_id
                                          THEN c.direct_identity_high ELSE c.direct_identity_low END
                 LEFT JOIN oro_message lm ON lm.conversation_id = c.id AND lm.seq = c.last_message_seq
+                LEFT JOIN oro_messaging_identity inviter ON inviter.id = CASE WHEN c.conversation_type = 'direct'
+                                                                           THEN c.created_by ELSE m.added_by END
                 LEFT JOIN oro_messaging_identity sender ON sender.id = lm.sender_id
                 WHERE m.user_id = ? AND m.left_at IS NULL AND c.product_id = ?
-                """;
+                """ + (pending ? " AND m.pending_since IS NOT NULL" : " AND m.pending_since IS NULL");
         List<Object> args = new ArrayList<>(List.of(actor.identityId(), actor.product().code()));
         if (actor.organizationId() == null) {
             sql += " AND c.organization_id IS NULL";
@@ -252,7 +323,7 @@ public class ConversationService {
     public Conversation rename(Actor actor, UUID conversationId, String name, String description) {
         session.enterUser(actor);
         Conversation group = requireGroup(actor, conversationId);
-        ConversationMember mine = access.requireActiveMember(actor, group);
+        ConversationMember mine = access.requireAcceptedMember(actor, group);
         if (!mine.canManageMembers()) {
             throw new Forbidden("Only the owner and the admins rename a group");
         }
@@ -274,7 +345,7 @@ public class ConversationService {
     public void typing(Actor actor, UUID conversationId, String userId) {
         session.enterUser(actor);
         Conversation conversation = access.requireConversation(actor, conversationId);
-        access.requireActiveMember(actor, conversation);
+        access.requireAcceptedMember(actor, conversation);
         List<UUID> others = members.findActiveMembers(conversation.getId()).stream().map(ConversationMember::getUserId)
                 .filter(id -> !id.equals(actor.identityId())).toList();
         live.afterCommit(others, actor, Map.of("type", "typing", "conversationId", conversation.getId(), "userId", userId));
@@ -291,7 +362,7 @@ public class ConversationService {
                 rs.getLong("member_count"), rs.getLong("last_message_seq"),
                 rs.getObject("last_message_at", OffsetDateTime.class), rs.getObject("created_at", OffsetDateTime.class),
                 rs.getLong("unread"), rs.getObject("muted_until", OffsetDateTime.class), MemberRole.of(rs.getString("role")),
-                last);
+                last, rs.getString("invited_by"));
     }
 
     /** the actor has read up to seq (clamped by the database: never back, never beyond the last message) */
