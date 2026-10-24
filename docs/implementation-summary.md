@@ -91,7 +91,7 @@ Caddy in production ([Deployment](deployment.md)).
 - Who is on call, and the runbooks rehearsed on a staging server ([Runbooks](runbooks.md)).
 - An alert receiver, the off-server backup buckets, and restore drills on a schedule.
 - Object storage for the files (not needed while they stay on a backed-up volume of one server).
-- The service workers of the clients that take the push notifications (Oro sends them), and mobile push.
+- Mobile push (Firebase, Apple), and the notifications of an Oro app (Umoja's web app takes them).
 - Several instances: the streams, the presence and the rate limits live in the memory of one.
 - Moderation by the admins, edit history and threads.
 

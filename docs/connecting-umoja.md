@@ -9,6 +9,10 @@ Umoja (`../umoja`) uses Oro for its Messages page:
   `UMOJA_INTEGRATION_KEY`; Oro keeps only its SHA-256, in `UMOJA_INTEGRATION_KEYS`): after every change, when a user
   opens the messages, and every 10 minutes.
 - Both reach Oro on the shared Docker network `asataDB` as `oro:8082`.
+- Its frontend takes Oro's notifications (Web Push) when the person turns them on (the bell of the Messages page):
+  the service worker `/oro-sw.js` shows them ("Design", "New message from Amani": never the text) and opens the
+  conversation on a click; `core/push/push.service.ts` subscribes the browser with Oro's key and gives the
+  subscription to Oro, and forgets it at sign-out, so that the next person on the browser never gets them.
 
 Without Umoja's public keys, Umoja users cannot call Oro; without the integration key, their organizations are not
 synchronized.
