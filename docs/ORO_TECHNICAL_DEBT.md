@@ -96,8 +96,8 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 
 - **Today**: `GET /conversations` returns every active conversation of the user, with its last message and its count
   of members: about 0.1 ms each at the database (13 ms for 40, 81 ms for 823, `backend/perf`).
-- **Risk**: a user in hundreds of conversations pays it on every refresh of the list (Umoja reads it again after
-  every change).
+- **Risk**: a user in hundreds of conversations pays it on every refresh of the list (Umoja reads it when its
+  stream opens and when a conversation changes; a message updates it in place since 2026-10-24).
 - **Revisit**: when users have hundreds of conversations: the newest 50, then more (an API change for the clients).
 
 ### No partitioning

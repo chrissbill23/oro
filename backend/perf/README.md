@@ -107,8 +107,10 @@ then held 2 minutes:
 - **A busy group** (run 1: 499 members, all online, 10 messages a second for 12 minutes, about 5,000 stream events a
   second, 5.3 million in all) did not move the break: requests waited for a connection from 1,500 people on, as
   without it. One conversation's lock and its fan-out are not the limit at this size.
-- **The list is the main cost**: Umoja reads it again after every event, about 40 % of the requests and most of the
-  database's work. Updating the list from the events instead would raise the capacity the most.
+- **The list is the main cost**: Umoja read it again after every event, about 40 % of the requests and most of the
+  database's work. Since 2026-10-24 Umoja updates it from the message events instead (it reads the one message, for
+  its preview) and reads the whole list only on a new conversation, a change of members, or a stream opened again.
+  The numbers above are from before: the load test still reads the list every 8 to 12 s, so they are a floor.
 
 The launch capacity must be at least 3 times the expected peak: on this size, a peak of about 330 people active at
 once. More: more CPUs for Oro and the database (both were the limit), then the list read less often.
