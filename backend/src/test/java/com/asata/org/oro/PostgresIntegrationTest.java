@@ -45,7 +45,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(TestOutboxHandler.class)
+@Import({TestOutboxHandler.class, TestMailer.class})
 public abstract class PostgresIntegrationTest {
 
     /** the organizations of Umoja the tests use: external references, nothing to create */
@@ -118,6 +118,8 @@ public abstract class PostgresIntegrationTest {
     @Autowired
     protected TestOutboxHandler outboxHandler;
     @Autowired
+    protected TestMailer mailer;
+    @Autowired
     protected com.asata.org.oro.config.ratelimit.RateLimiter rateLimiter;
     @Autowired
     protected DbSession session;
@@ -136,6 +138,7 @@ public abstract class PostgresIntegrationTest {
                 TRUNCATE oro_outbox_event, oro_message_reaction, oro_attachment, oro_message, oro_conversation_member, oro_conversation,
                          oro_organization_access, oro_organization_sync, oro_messaging_identity, asata_user CASCADE""");
         outboxHandler.reset();
+        mailer.reset();
         // the limits of the users count again: a test is not limited by the requests of the others
         rateLimiter.reset();
     }

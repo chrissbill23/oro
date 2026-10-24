@@ -26,4 +26,12 @@ public class AccountProperties {
     private String cookieName = "oro_refresh";
     private int maxFailedAttempts = 5;
     private Duration lockDuration = Duration.ofMinutes(15);
+    /** where the links of the emails lead: the Oro app, which posts the token back (/verify-email?token=...) */
+    private String linkBase = "http://localhost:4300";
+    /** the sender of the emails */
+    private String mailFrom = "Oro <no-reply@oro.localhost>";
+    /** how long a link to verify an address stays valid */
+    private Duration verifyTtl = Duration.ofHours(24);
+    /** the length of a new password, at least; at most 128 (bcrypt reads 72 bytes, the rest is refused, not cut) */
+    private int minPasswordLength = 10;
 }

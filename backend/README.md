@@ -115,6 +115,7 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction; the API's login never takes `oro_system`, and each context only on its own login; slow statements and long lock waits end |
 | `CatchUpTest` | Over HTTP: a stream cut, two messages sent meanwhile, the stream back; the list and `?after=` give what was missed |
+| `SignUpTest` | Sign-up, the address verified before sign-in, the same answer and a notice for a known address, a taken username, the links single use and for their address only, a new link only when awaited |
 | `AccountTest` | Sign-in by email or username, the token on the API, one answer for every failure, the lock after 5 wrong passwords, rotation and a stolen session, sign-out, Umoja's tokens refused, the logins apart |
 | `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention; `ops/outbox-replay.sh` (list, by id, all; anything but an id refused) |
 | `ApiTest` | The HTTP chain with tokens really signed by each product (RS256, `TestTokens`): another key (even under a published `kid`), the audience, HS256 with the former shared secret, unsigned tokens, unknown issuer, expiry, no expiry, a subject that is not an account id, not-before, clock skew; no API description by default; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
@@ -219,6 +220,9 @@ wrong passwords). Oro signs their access tokens itself (`account/`):
 
 | Route | What |
 |---|---|
+| `POST /auth/signup` `{email, username, password, givenName, surname}` | A new Asata account, its address to verify: 202, the same answer whether the address has an account (its owner then gets a notice); a taken username 409 |
+| `POST /auth/verify-email` `{token}` | The token of the link sent by email: the address verified (204), once, within 24 h, for that address only |
+| `POST /auth/verify-email/resend` `{email}` | A new link if the address waits for its verification; 202 whatever the address |
 | `POST /auth/login` `{login, password, remember}` | The email or the username and the password: an access token (15 min) in the body, the refresh token in a cookie |
 | `POST /auth/refresh` | A new access token from the cookie, which is replaced |
 | `POST /auth/logout` | The session closed, the cookie cleared |
@@ -232,12 +236,18 @@ wrong passwords). Oro signs their access tokens itself (`account/`):
   SHA-256 of `oro:` + the token: Umoja and Mokili look tokens up by the SHA-256 of the token alone, so they never find
   Oro's, nor Oro theirs. Replaced at each use; a replaced token used again (stolen) ends the whole session.
 - **Failures**: the same answer for an unknown login, a wrong password, a locked or a disabled account, in the same
-  time (a dummy hash). The logs name the account by its id, never the login typed.
+  time (a dummy hash). The logs name the account by its id, never the login typed. The right password of an address
+  never verified: 403, verify it first.
+- **Passwords**: 10 characters at least, 72 bytes at most (what bcrypt reads: refused beyond, never cut), never the
+  email nor the username; stored `{bcrypt}`, as Umoja and Mokili read them.
+- **Emails**: by SMTP (`ORO_SMTP_*`, any provider; Mailpit in development, http://localhost:8025), sent once the
+  account is saved: a failed email is logged (its class, never the address) and asked for again. The links lead to
+  the Oro app (`ORO_ACCOUNTS_LINK_BASE`), which posts the token back; the token is in the link only, its SHA-256 in
+  `asata_user_email_token`. The SMTP server away never makes Oro down.
 - **Logins**: the accounts work through their own database login, `oro_auth`, which can take `oro_account` only:
   some columns of `asata_user`, `asata_user_credential` and `asata_user_refresh_token`, nothing of the messaging. The
   logins of the messaging never read a password (`AccountTest`).
-- **Not yet**: signing up, verifying an email, recovering a password, rate limits per address on these routes, phone
-  accounts.
+- **Not yet**: recovering a password, rate limits per address on these routes, phone accounts.
 
 ## Rate limits
 

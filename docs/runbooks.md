@@ -157,6 +157,16 @@ docker exec asata-postgres-1 sh -c 'du -sh "$PGDATA"/pg_wal "$PGDATA"'   # the d
 - **Docker**: old images and build cache: `docker image prune -a` and `docker builder prune` (never `docker volume
   prune`: it deletes the data of stopped containers). The logs of the containers are rotated (5 × 50 MB each).
 
+### The emails do not arrive
+
+People sign up but get no link, or no reset.
+
+1. `dc logs --since 1h oro | grep "could not be sent"`: the SMTP server refused or was away (the class of the error).
+2. The settings: `ORO_SMTP_HOST`, `ORO_SMTP_USERNAME`, `secrets/smtp_password`; the provider's dashboard (bounces,
+   a suspended account, the sender's domain not verified: SPF, DKIM).
+3. Sent but in spam: the sender's domain at the provider.
+4. Fixed: people ask for a new link (`POST /auth/verify-email/resend`); nothing is lost.
+
 ### Revoke a user at once
 
 A stolen account, someone who must lose access now.

@@ -88,7 +88,8 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/ping", "/error", "/actuator/health/**", "/doc/**").permitAll()
                         // the sign-in of Oro's accounts, and the public keys of its tokens
-                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/auth/login", "/auth/refresh", "/auth/logout").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/auth/login", "/auth/refresh", "/auth/logout",
+                                "/auth/signup", "/auth/verify-email", "/auth/verify-email/resend").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/.well-known/jwks.json").permitAll()
                         // the actuator is served on the management port only (never published): Prometheus, unauthenticated
                         .requestMatchers("/actuator/info", "/actuator/prometheus").permitAll()

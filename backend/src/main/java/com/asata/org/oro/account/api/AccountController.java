@@ -36,7 +36,45 @@ public class AccountController {
     private final AccountProperties properties;
     private final AccountKeys keys;
 
-    public record LoginRequest(@NotNull String login, @NotNull String password, boolean remember) {
+    /** remember: optional, false by default */
+    public record LoginRequest(@NotNull String login, @NotNull String password, Boolean remember) {
+    }
+
+    public record SignUpRequest(@NotNull String email, @NotNull String username, @NotNull String password,
+                                String givenName, String surname) {
+    }
+
+    public record TokenRequest(@NotNull String token) {
+    }
+
+    public record EmailRequest(@NotNull String email) {
+    }
+
+    public record MessageDTO(String message) {
+    }
+
+    @Operation(summary = "Create an Asata account", description = "Its address to verify by the link sent to it. The same "
+            + "answer whether the address already has an account (its owner gets a notice); a taken username: 409")
+    @PostMapping("/auth/signup")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public MessageDTO signUp(@Valid @RequestBody SignUpRequest request) {
+        accounts.signUp(request.email(), request.username(), request.password(), request.givenName(), request.surname());
+        return new MessageDTO("Check your email to finish creating your account");
+    }
+
+    @Operation(summary = "Verify an email address", description = "With the token of the link sent to it")
+    @PostMapping("/auth/verify-email")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void verifyEmail(@Valid @RequestBody TokenRequest request) {
+        accounts.verifyEmail(request.token());
+    }
+
+    @Operation(summary = "A new link to verify an address", description = "The same answer whatever the address")
+    @PostMapping("/auth/verify-email/resend")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public MessageDTO resendVerification(@Valid @RequestBody EmailRequest request) {
+        accounts.resendVerification(request.email());
+        return new MessageDTO("If this address waits for its verification, a new link is on its way");
     }
 
     public record SignedInDTO(String accessToken, String tokenType, long expiresIn, UUID userId, String username,
@@ -47,7 +85,7 @@ public class AccountController {
             + "remember: the session lasts 30 days instead of ending with the browser")
     @PostMapping("/auth/login")
     public SignedInDTO login(@Valid @RequestBody LoginRequest login, HttpServletRequest request, HttpServletResponse response) {
-        return signedIn(accounts.login(login.login(), login.password(), login.remember(), request.getHeader(HttpHeaders.USER_AGENT)),
+        return signedIn(accounts.login(login.login(), login.password(), Boolean.TRUE.equals(login.remember()), request.getHeader(HttpHeaders.USER_AGENT)),
                 request, response);
     }
 

@@ -27,6 +27,9 @@ services:
       ORO_ACCOUNTS_SIGNING_KEY: ${ORO_ACCOUNTS_SIGNING_KEY:-}
       # http://localhost: a Secure cookie would not come back from every browser
       ORO_COOKIE_SECURE: ${ORO_COOKIE_SECURE:-false}
+      # the emails of the accounts: Mailpit here (http://localhost:8025), any SMTP server in production
+      ORO_SMTP_HOST: ${ORO_SMTP_HOST:-mailpit}
+      ORO_SMTP_PORT: ${ORO_SMTP_PORT:-1025}
       ORO_OUTBOX_ENABLED: ${ORO_OUTBOX_ENABLED:-true}
       # Swagger UI on /oro/doc: development only, set ORO_API_DOCS=false in production
       ORO_API_DOCS: ${ORO_API_DOCS:-true}
@@ -68,6 +71,13 @@ services:
       # on this machine only: the browsers reach Oro through the proxy of a product (Umoja's nginx), and Umoja's backend
       # on the network asataDB; never published on every interface (/internal would be reachable)
       - "127.0.0.1:${ORO_PORT:-8082}:8082"
+
+  # the emails of development (verifications, resets): received, never sent, read on http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.21.0
+    ports:
+      - "127.0.0.1:${ORO_MAILPIT_PORT:-8025}:8025"
+    restart: unless-stopped
 
   # the malware scanner of the attachments (clamd on 3310, this network only). Its first start downloads the signatures
   # (a few minutes, kept in a volume); about 1.5 GB of memory. Meanwhile the uploads wait, pending

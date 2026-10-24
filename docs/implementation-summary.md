@@ -82,7 +82,7 @@ Caddy in production ([Deployment](deployment.md)).
 
 ## Not done yet
 
-- Sign-up, email verification and password recovery for Oro's accounts (sign-in into Asata accounts works), and
+- Password recovery for Oro's accounts (sign-up, verification and sign-in into Asata accounts work), and
   blocking and reporting between Oro users.
 - Deleting an account with its messages and files.
 - A privacy notice (the retention of deleted content is written: [Retention](retention.md)).

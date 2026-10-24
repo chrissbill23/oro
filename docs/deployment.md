@@ -69,8 +69,13 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -to
 UMOJA_KEY=$(openssl rand -hex 32)                 # Umoja's, in step 3; Oro keeps its hash only
 printf 'current:%s' "$(printf %s "$UMOJA_KEY" | shasum -a 256 | cut -d' ' -f1)" > secrets/umoja_integration_keys
 mkpass > secrets/files_backup_password
+printf %s '<the SMTP password of the provider>' > secrets/smtp_password
 cat > backend/.env.local <<EOF
 ORO_CORS_ALLOWED_ORIGINS=https://umoja.example.org
+ORO_SMTP_HOST=smtp.provider.example
+ORO_SMTP_USERNAME=...
+ORO_ACCOUNTS_LINK_BASE=https://oro.example.org
+ORO_ACCOUNTS_MAIL_FROM=Oro <no-reply@oro.example.org>
 ORO_FILES_BACKUP_REPOSITORY=s3:<endpoint>/<bucket>/oro-files
 ORO_FILES_BACKUP_S3_KEY=...
 ORO_FILES_BACKUP_S3_SECRET=...
@@ -82,8 +87,9 @@ docker compose ps oro                             # "healthy": ready, the databa
 
 Oro refuses to start in production on a setting of development (`ProductionChecks`): a placeholder or short password,
 no ClamAV, the API description on, the rate limits off, an origin that is not HTTPS, the actuator on the API's port, the
-Umoja integration without a key, no signing key for the accounts, a refresh cookie that is not Secure. It lists every
-problem at once.
+Umoja integration without a key, no signing key for the accounts, a refresh cookie that is not Secure, emails to a
+development mailbox, links that are not HTTPS. It lists every problem at once. The sender's domain needs SPF and DKIM
+at the provider, or the emails land in spam.
 
 Give Alertmanager a receiver that reaches someone (`monitoring/alertmanager.yml`) before going live.
 

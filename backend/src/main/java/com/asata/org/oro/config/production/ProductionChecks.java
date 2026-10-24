@@ -51,6 +51,13 @@ public class ProductionChecks {
         if (!env.getProperty("oro.accounts.cookie-secure", Boolean.class, true)) {
             problems.add("the refresh cookie is not Secure (ORO_COOKIE_SECURE)");
         }
+        String smtp = env.getProperty("spring.mail.host", "");
+        if (smtp.isBlank() || smtp.equals("localhost") || smtp.equals("mailpit") || smtp.startsWith("127.")) {
+            problems.add("the emails of the accounts go to a development mailbox (ORO_SMTP_HOST)");
+        }
+        if (!env.getProperty("oro.accounts.link-base", "").startsWith("https://")) {
+            problems.add("the links of the emails are not HTTPS (ORO_ACCOUNTS_LINK_BASE)");
+        }
         if (!"clamav".equals(env.getProperty("oro.attachments.scan"))) {
             problems.add("oro.attachments.scan is not clamav: files would be served unscanned");
         }

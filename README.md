@@ -46,7 +46,7 @@ development data, and `oro/DROP.sql`).
 
 Working: everything listed above. Not done yet:
 
-- Signing up, verifying an email and recovering a password for Oro's accounts (signing in to an Asata account works).
+- Recovering a password for Oro's accounts (signing up and signing in with an Asata account work).
 - An object storage for the files (they go to a local disk, scanned by ClamAV and backed up with restic).
 - Push notifications.
 - More than one instance (the live streams live in memory).

@@ -12,6 +12,9 @@ x-logging: &logging
     max-file: "5"
 
 services:
+  # the mailbox of development: never started in production (a profile nobody activates)
+  mailpit:
+    profiles: ["development-only"]
   alertmanager:
     logging: *logging
   prometheus:
@@ -28,6 +31,14 @@ services:
       SPRING_DATASOURCE_USERNAME: oro_api
       ORO_SYSTEM_DATASOURCE_USERNAME: oro_worker
       ORO_ACCOUNT_DATASOURCE_USERNAME: oro_auth
+      # the emails of the accounts: the SMTP server of a provider (its password: the secret smtp_password)
+      ORO_SMTP_HOST: ${ORO_SMTP_HOST:?the SMTP server of the emails}
+      ORO_SMTP_PORT: ${ORO_SMTP_PORT:-587}
+      ORO_SMTP_USERNAME: ${ORO_SMTP_USERNAME:?}
+      ORO_SMTP_AUTH: "true"
+      ORO_SMTP_STARTTLS: "true"
+      ORO_ACCOUNTS_LINK_BASE: ${ORO_ACCOUNTS_LINK_BASE:?the HTTPS address of the Oro app, e.g. https://oro.example.org}
+      ORO_ACCOUNTS_MAIL_FROM: ${ORO_ACCOUNTS_MAIL_FROM:?the sender, e.g. Oro <no-reply@oro.example.org>}
       ORO_OUTBOX_ENABLED: "true"
       ORO_API_DOCS: "false"
       UMOJA_JWKS_URI: http://umoja:8080/umoja/.well-known/jwks.json
@@ -47,6 +58,8 @@ services:
       # the private key that signs the access tokens of Oro's accounts (PKCS#8, base64): never in an environment
       - source: oro_accounts_signing_key
         target: oro.accounts.signing-key
+      - source: smtp_password
+        target: spring.mail.password
       - source: umoja_integration_keys
         target: oro.security.products.UMOJA.integration-keys
     ports: !reset []
@@ -71,6 +84,8 @@ secrets:
     file: ./secrets/oro_auth_db_password
   oro_accounts_signing_key:
     file: ./secrets/oro_accounts_signing_key
+  smtp_password:
+    file: ./secrets/smtp_password
   # name:sha256 of each key, comma separated (never the keys)
   umoja_integration_keys:
     file: ./secrets/umoja_integration_keys
