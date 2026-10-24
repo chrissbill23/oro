@@ -626,7 +626,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
 
 ## P2: Reliability, performance and scale
 
-- [ ] `ORO-SCL-001` — P2 — Check the query plans on realistic data
+- [x] `ORO-SCL-001` — P2 — Check the query plans on realistic data
+  - Done (2026-10-24): 10,000 identities, 100,000 conversations, 9.9 million messages (`backend/perf/generate.sql`), each query explained as `oro_app` with production's PostgreSQL settings (`explain.sql`); the plans saved in `backend/perf/plans`. Pages, catch-up and the send: under 1 ms to 11 ms. Fixed: the count of the members in the list (`oro_member_count`: 33 ms to 13 ms for 40 conversations) and the search (`oro_search_messages`: 5 s to 0.4 to 0.7 s, see `ORO-SCL-002`). No sequential scan on `oro_message`. Left: the list grows with the conversations (81 ms for 823): paging it is an API change.
   - Current state: Unverified (indexes match the queries on paper: `backend/README.md`, Indexes)
   - Evidence: `ConversationService.list` (one query with unread counts), `MessageRepository.findNewest`,
     `findBefore`, `findAfter`, `MessageService.search`, the RLS functions `oro_member_history_from` called per row.
@@ -640,8 +641,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Recommended before launch
   - Verification: the plans saved in the repository
 
-- [x] `ORO-SCL-002` — P2 — Indexed search
-  - Correction (2026-10-23): the audit was wrong, the search is indexed: `idx_oro_message_body_trgm` (pg_trgm GIN on `body`, `CREATE_ORO_TABLES.sql`, commit `c2793ec`) serves the `ILIKE`. What is left is `ORO-SCL-001`, checking its plan on realistic data.
+- [ ] `ORO-SCL-002` — P2 — Indexed search
+  - Partly done (2026-10-24): my correction of 2026-10-23 was wrong, and the audit right: the index `idx_oro_message_body_trgm` existed but could not serve the API, whose search runs under RLS (`ILIKE` is not leakproof: the policy runs first, row by row, and no index serves the text). The plans of `ORO-SCL-001` showed 5 s for a frequent word. The search now goes through `oro_search_messages`, which applies the rule of the policy itself and lets the index serve: 2 ms for a typical user, 0.4 to 0.7 s for a member of a conversation of a million messages (`backend/perf`). Left: that case under 100 ms (full-text search with a `tsvector`, or bounding the scan).
   - Current state: Implemented with a trigram index
   - Evidence: `MessageService.search`.
   - Problem: the search reads every message of the user's conversations.

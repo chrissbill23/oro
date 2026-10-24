@@ -82,10 +82,23 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 
 ### Search by trigrams
 
-- **Today**: `ILIKE '%…%'` over the user's readable messages, 30 results, served by a trigram index
-  (`idx_oro_message_body_trgm`).
-- **Risk**: no ranking, no stemming; the index grows with the messages and slows the sends a little.
-- **Revisit**: when users ask for relevance or languages (full-text search), or search p95 over 300 ms.
+- **Today**: `ILIKE '%…%'` over the user's readable messages, 30 results, through `oro_search_messages` (since
+  2026-10-24): a function that applies the rule of the policy of the messages itself, because under RLS no index can
+  serve `ILIKE`; the trigram index (`idx_oro_message_body_trgm`) then serves it. 2 ms for a typical user, 0.4 to
+  0.7 s in a conversation of a million messages (`backend/perf`).
+- **Risk**: the rule of who reads which message is written twice, in the policy and in the function: a change of one
+  must change the other (`MessagingFeaturesTest.theSearchFollowsTheRuleOfThePolicyOfTheMessages`). No ranking, no
+  stemming; the index slows the sends a little.
+- **Revisit**: when users ask for relevance or languages (full-text search with a `tsvector`, which also bounds the
+  large conversations), or search p95 over 300 ms.
+
+### The list of the conversations is not paged
+
+- **Today**: `GET /conversations` returns every active conversation of the user, with its last message and its count
+  of members: about 0.1 ms each at the database (13 ms for 40, 81 ms for 823, `backend/perf`).
+- **Risk**: a user in hundreds of conversations pays it on every refresh of the list (Umoja reads it again after
+  every change).
+- **Revisit**: when users have hundreds of conversations: the newest 50, then more (an API change for the clients).
 
 ### No partitioning
 

@@ -210,8 +210,7 @@ public class ConversationService {
         String sql = """
                 SELECT c.id, c.conversation_type, c.name, c.team_id, c.last_message_seq, c.last_message_at, c.created_at,
                        c.last_message_seq - m.last_read_seq AS unread, m.muted_until, m.role,
-                       (SELECT count(*) FROM oro_conversation_member x
-                        WHERE x.conversation_id = c.id AND x.left_at IS NULL) AS member_count,
+                       oro_member_count(c.id) AS member_count,
                        other.external_user_id AS other_user_id,
                        lm.id AS lm_id, lm.seq AS lm_seq, sender.external_user_id AS lm_sender, lm.message_type AS lm_type,
                        left(lm.body, 200) AS lm_body,

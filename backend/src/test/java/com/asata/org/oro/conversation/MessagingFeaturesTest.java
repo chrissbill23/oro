@@ -263,6 +263,43 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
         assertThatThrownBy(() -> messages.search(amaraActor, "notes", other.getId())).isInstanceOf(NotFound.class);
     }
 
+    /**
+     * the search runs outside RLS (oro_search_messages, so that the trigram index serves it): the rule of the policy
+     * of the messages, each part of it
+     */
+    @Test
+    void theSearchFollowsTheRuleOfThePolicyOfTheMessages() {
+        Conversation group = conversations.createGroup(jordanActor, "Design", null, List.of(amara, kwame));
+        say(jordanActor, group.getId(), "Quarterly invoice sent");
+        UUID deleted = say(jordanActor, group.getId(), "Old invoice, wrong amount").message().getId();
+        messages.delete(jordanActor, deleted);
+        // what another organization and another product say
+        sync.sync(GLOBEX, 1, List.of("umoja-jordan", "umoja-zola"), List.of());
+        Actor jordanAtGlobex = Actor.umoja(jordan, GLOBEX);
+        conversations.createGroup(jordanAtGlobex, "Globex", null, List.of());
+        say(jordanAtGlobex, conversations.list(jordanAtGlobex).getFirst().id(), "Globex invoice");
+        Actor oro = Actor.oro(oroUser("oro-nia"));
+        UUID personal = conversations.createGroup(oro, "Family", null, List.of()).getId();
+        say(oro, personal, "Family invoice");
+
+        // the context of the caller only, never what is deleted
+        assertThat(messages.search(jordanActor, "invoice", null)).extracting(Message::getBody).containsExactly("Quarterly invoice sent");
+        assertThat(messages.search(jordanAtGlobex, "invoice", null)).extracting(Message::getBody).containsExactly("Globex invoice");
+        assertThat(messages.search(oro, "invoice", null)).extracting(Message::getBody).containsExactly("Family invoice");
+        // never a system message (Amara joined: its text is the event)
+        assertThat(messages.search(jordanActor, "member", null)).isEmpty();
+
+        // a member who left reads nothing more of it
+        conversations.leave(Actor.umoja(kwame, ACME), group.getId());
+        assertThat(messages.search(Actor.umoja(kwame, ACME), "invoice", null)).isEmpty();
+        // a suspended identity reads nothing
+        assertThat(messages.search(amaraActor, "invoice", null)).hasSize(1);
+        identities.suspend(amara);
+        assertThat(messages.search(amaraActor, "invoice", null)).isEmpty();
+        // the count of the members: for a member only
+        assertThat(conversations.list(jordanActor).getFirst().memberCount()).isEqualTo(2);
+    }
+
     @Test
     void theOutboxEventsReachTheMembersAndWhoLeft() {
         Conversation group = conversations.createGroup(jordanActor, "Design", null, List.of(amara, kwame));

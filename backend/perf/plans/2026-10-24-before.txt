@@ -1,0 +1,479 @@
+Pager usage is off.
+ power_conversations | typical_conversations | hot_messages | biggroup_members
+---------------------+-----------------------+--------------+------------------
+                 823 |                    40 |      1000000 |              499
+(1 row)
+
+INSERT 0 0
+=== 1. list: the typical user
+BEGIN
+SET
+ count
+-------
+    40
+(1 row)
+
+                                                                                                                                                                                                           QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=33.124..33.126 rows=40 loops=1)
+   Sort Key: (COALESCE(c.last_message_at, c.created_at)) DESC, c.id
+   Sort Method: quicksort  Memory: 32kB
+   Buffers: shared hit=38473 read=246
+   ->  Result (actual time=3.113..33.098 rows=40 loops=1)
+         One-Time Filter: (NULLIF(current_setting('oro.product_id'::text, true), ''::text) = 'UMOJA'::text)
+         Buffers: shared hit=38467 read=246
+         ->  Nested Loop Left Join (actual time=0.383..8.418 rows=40 loops=1)
+               Join Filter: ((c.conversation_type)::text = 'direct'::text)
+               Buffers: shared hit=1005 read=126
+               ->  Nested Loop Left Join (actual time=0.382..6.984 rows=40 loops=1)
+                     Buffers: shared hit=965 read=118
+                     ->  Nested Loop Left Join (actual time=0.337..4.521 rows=40 loops=1)
+                           Buffers: shared hit=862 read=101
+                           ->  Nested Loop (actual time=0.132..0.503 rows=40 loops=1)
+                                 Buffers: shared hit=483
+                                 ->  Bitmap Heap Scan on oro_conversation_member m (actual time=0.009..0.055 rows=40 loops=1)
+                                       Recheck Cond: ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) AND (left_at IS NULL))
+                                       Filter: (((product_id)::text = 'UMOJA'::text) AND ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) OR (oro_member_history_from(conversation_id) IS NOT NULL)))
+                                       Heap Blocks: exact=40
+                                       Buffers: shared hit=43
+                                       ->  Bitmap Index Scan on idx_oro_conversation_member_user (actual time=0.005..0.005 rows=40 loops=1)
+                                             Index Cond: (user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid)
+                                             Buffers: shared hit=3
+                                 ->  Index Scan using uq_oro_conversation_product on oro_conversation c (actual time=0.011..0.011 rows=1 loops=40)
+                                       Index Cond: ((id = m.conversation_id) AND ((product_id)::text = 'UMOJA'::text))
+                                       Filter: ((organization_id = '856f1936-b3f2-4a82-a7df-980d00c5cf40'::uuid) AND ((oro_member_history_from(id) IS NOT NULL) OR (((conversation_type)::text = 'direct'::text) AND (((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_low) OR ((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_high)))))
+                                       Buffers: shared hit=440
+                           ->  Index Scan using uq_oro_message_seq on oro_message lm (actual time=0.100..0.100 rows=1 loops=40)
+                                 Index Cond: ((conversation_id = c.id) AND (seq = c.last_message_seq))
+                                 Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (seq > oro_member_history_from(conversation_id)))
+                                 Buffers: shared hit=379 read=101
+                     ->  Index Scan using oro_messaging_identity_pkey on oro_messaging_identity sender (actual time=0.061..0.061 rows=1 loops=40)
+                           Index Cond: (id = lm.sender_id)
+                           Filter: ((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text))
+                           Buffers: shared hit=103 read=17
+               ->  Index Scan using oro_messaging_identity_pkey on oro_messaging_identity other (actual time=0.035..0.035 rows=0 loops=40)
+                     Index Cond: (id = CASE WHEN (c.direct_identity_low = m.user_id) THEN c.direct_identity_high ELSE c.direct_identity_low END)
+                     Filter: ((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text))
+                     Buffers: shared hit=40 read=8
+         SubPlan 1
+           ->  Aggregate (actual time=0.616..0.616 rows=1 loops=40)
+                 Buffers: shared hit=37462 read=120
+                 ->  Index Scan using uq_oro_conversation_member_active on oro_conversation_member x (actual time=0.020..0.612 rows=121 loops=40)
+                       Index Cond: (conversation_id = c.id)
+                       Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) OR (oro_member_history_from(conversation_id) IS NOT NULL)))
+                       Buffers: shared hit=37462 read=120
+ Planning:
+   Buffers: shared hit=112 read=19
+ Planning Time: 0.882 ms
+ Execution Time: 33.177 ms
+(51 rows)
+
+ROLLBACK
+=== 2. list: the power user (about 800 conversations)
+BEGIN
+SET
+ count
+-------
+   823
+(1 row)
+
+                                                                                                                                                                                                                                  QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=105.621..105.656 rows=823 loops=1)
+   Sort Key: (COALESCE(c.last_message_at, c.created_at)) DESC, c.id
+   Sort Method: quicksort  Memory: 180kB
+   Buffers: shared hit=115270 read=2084
+   ->  Result (actual time=0.335..105.333 rows=823 loops=1)
+         One-Time Filter: (NULLIF(current_setting('oro.product_id'::text, true), ''::text) = 'UMOJA'::text)
+         Buffers: shared hit=115270 read=2084
+         ->  Nested Loop Left Join (actual time=0.258..48.395 rows=823 loops=1)
+               Join Filter: ((c.conversation_type)::text = 'direct'::text)
+               Buffers: shared hit=21844 read=1827
+               ->  Nested Loop Left Join (actual time=0.256..47.136 rows=823 loops=1)
+                     Buffers: shared hit=20353 read=1821
+                     ->  Nested Loop Left Join (actual time=0.249..44.258 rows=823 loops=1)
+                           Buffers: shared hit=17901 read=1804
+                           ->  Nested Loop (actual time=0.155..7.432 rows=823 loops=1)
+                                 Buffers: shared hit=9829
+                                 ->  Bitmap Heap Scan on oro_conversation_member m (actual time=0.084..0.910 rows=823 loops=1)
+                                       Recheck Cond: ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) AND (left_at IS NULL))
+                                       Filter: (((product_id)::text = 'UMOJA'::text) AND ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) OR (oro_member_history_from(conversation_id) IS NOT NULL)))
+                                       Heap Blocks: exact=769
+                                       Buffers: shared hit=776
+                                       ->  Bitmap Index Scan on idx_oro_conversation_member_user (actual time=0.048..0.048 rows=823 loops=1)
+                                             Index Cond: (user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid)
+                                             Buffers: shared hit=7
+                                 ->  Memoize (actual time=0.008..0.008 rows=1 loops=823)
+                                       Cache Key: m.conversation_id
+                                       Cache Mode: logical
+                                       Hits: 0  Misses: 823  Evictions: 0  Overflows: 0  Memory Usage: 154kB
+                                       Buffers: shared hit=9053
+                                       ->  Index Scan using oro_conversation_pkey on oro_conversation c (actual time=0.007..0.007 rows=1 loops=823)
+                                             Index Cond: (id = m.conversation_id)
+                                             Filter: (((product_id)::text = 'UMOJA'::text) AND (organization_id = '0f8b3bfc-371f-40eb-9b0a-f77777d057a8'::uuid) AND ((oro_member_history_from(id) IS NOT NULL) OR (((conversation_type)::text = 'direct'::text) AND (((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_low) OR ((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_high)))))
+                                             Buffers: shared hit=9053
+                           ->  Index Scan using uq_oro_message_seq on oro_message lm (actual time=0.044..0.044 rows=1 loops=823)
+                                 Index Cond: ((conversation_id = c.id) AND (seq = c.last_message_seq))
+                                 Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (seq > oro_member_history_from(conversation_id)))
+                                 Buffers: shared hit=8072 read=1804
+                     ->  Index Scan using oro_messaging_identity_pkey on oro_messaging_identity sender (actual time=0.003..0.003 rows=1 loops=823)
+                           Index Cond: (id = lm.sender_id)
+                           Filter: ((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text))
+                           Buffers: shared hit=2452 read=17
+               ->  Index Scan using oro_messaging_identity_pkey on oro_messaging_identity other (actual time=0.001..0.001 rows=1 loops=823)
+                     Index Cond: (id = CASE WHEN (c.direct_identity_low = m.user_id) THEN c.direct_identity_high ELSE c.direct_identity_low END)
+                     Filter: ((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text))
+                     Buffers: shared hit=1491 read=6
+         SubPlan 1
+           ->  Aggregate (actual time=0.069..0.069 rows=1 loops=823)
+                 Buffers: shared hit=93426 read=257
+                 ->  Index Scan using uq_oro_conversation_member_active on oro_conversation_member x (actual time=0.007..0.068 rows=16 loops=823)
+                       Index Cond: (conversation_id = c.id)
+                       Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) OR (oro_member_history_from(conversation_id) IS NOT NULL)))
+                       Buffers: shared hit=93426 read=257
+ Planning:
+   Buffers: shared hit=40
+ Planning Time: 0.363 ms
+ Execution Time: 105.751 ms
+(56 rows)
+
+ROLLBACK
+=== 3. page: the newest 40 of the hot group (a million messages)
+BEGIN
+SET
+ count
+-------
+    40
+(1 row)
+
+                                                                          QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=0.049..0.216 rows=40 loops=1)
+   Buffers: shared hit=288
+   ->  Index Scan Backward using uq_oro_message_seq on oro_message (actual time=0.049..0.214 rows=40 loops=1)
+         Index Cond: (conversation_id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid)
+         Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (seq > oro_member_history_from(conversation_id)))
+         Buffers: shared hit=288
+ Planning:
+   Buffers: shared hit=9
+ Planning Time: 0.048 ms
+ Execution Time: 0.220 ms
+(10 rows)
+
+ROLLBACK
+=== 4. page: 40 before seq 500000 in the hot group (scrolled far back)
+BEGIN
+SET
+                                                                          QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=0.115..0.311 rows=40 loops=1)
+   Buffers: shared hit=286 read=5
+   ->  Index Scan Backward using uq_oro_message_seq on oro_message (actual time=0.113..0.307 rows=40 loops=1)
+         Index Cond: ((conversation_id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid) AND (seq < 500000))
+         Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (seq > oro_member_history_from(conversation_id)))
+         Buffers: shared hit=286 read=5
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.031 ms
+ Execution Time: 0.315 ms
+(10 rows)
+
+ROLLBACK
+=== 5. after: what came after the last seq the client has (catch-up)
+BEGIN
+SET
+                                                                          QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=0.048..0.214 rows=40 loops=1)
+   Buffers: shared hit=287
+   ->  Index Scan using uq_oro_message_seq on oro_message (actual time=0.048..0.211 rows=40 loops=1)
+         Index Cond: ((conversation_id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid) AND (seq > 999960))
+         Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (seq > oro_member_history_from(conversation_id)))
+         Buffers: shared hit=287
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.029 ms
+ Execution Time: 0.217 ms
+(10 rows)
+
+ROLLBACK
+=== 6. page: a direct conversation of the typical user
+BEGIN
+SET
+                                                                          QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=0.055..0.236 rows=40 loops=1)
+   Buffers: shared hit=285 read=1
+   ->  Index Scan Backward using uq_oro_message_seq on oro_message (actual time=0.055..0.235 rows=40 loops=1)
+         Index Cond: (conversation_id = '624c2423-7b86-4ee6-909c-3f8660b442c1'::uuid)
+         Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (seq > oro_member_history_from(conversation_id)))
+         Buffers: shared hit=285 read=1
+ Planning Time: 0.020 ms
+ Execution Time: 0.240 ms
+(8 rows)
+
+ROLLBACK
+=== 7. the reactions and attachments of a page (40 ids)
+BEGIN
+SET
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=0.006..0.006 rows=0 loops=1)
+   Sort Key: r.created_at, r.emoji
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=3
+   ->  Nested Loop (actual time=0.002..0.002 rows=0 loops=1)
+         ->  Seq Scan on oro_message_reaction r (actual time=0.002..0.002 rows=0 loops=1)
+               Filter: ((message_id = ANY ('{9cb645a3-6eba-4515-82e8-fd32bbf3e7bf,76593627-7d83-40b1-87c9-738fb6eda63b,b68791e3-2624-4b6e-a1bd-6be7df080f43,1dd75330-b43e-45b8-9d23-4b5de6128dff,ff77e42d-20d8-43ba-b463-5235cc9118e5,3a4285ac-0671-4b27-9e5c-73676a2841fa,1d72df15-d1e3-44f4-a766-609283df725d,0252cbca-1cfc-4c96-8544-347fdcd1d457,1aa0b6a8-6d19-4715-843d-f313f9c30333,a7c4b71f-bdf2-45af-9597-1412f911babc,fd87e928-aebc-4451-8272-42636b5747fd,f7c1c6df-e130-4010-bd5a-50cc66e05c42,46a8c2a9-18ee-4d98-a251-4fbf9cc8d0ed,6c6b88a3-9734-4558-827a-387e534047c9,87c96461-9404-4e19-afd9-42455a2c7bb1,0388264d-b2e2-4460-bd27-c15463bf89b8,ca500c6c-3310-4bf2-ad49-7765ae90a5c4,9163c6de-77a4-47da-b0e6-e7c6764aede6,86b12f7f-4b61-490c-9672-75e8f5f39172,8a9d4470-bbfa-4316-984c-c1d3c56e5fe3,55c4ddbb-be77-4ae2-98fe-c5c30b49e41c,92d10fa4-c7eb-4dde-83e2-3de75d931e76,189386bd-f5ed-44b3-85cd-a9b41e3c76ce,33f69f70-9761-47a9-84f5-bb4384907081,79249fbd-d3af-45f4-bf42-1943103af18d,82cbf248-9283-4d90-afe9-025350ddcecb,1f862784-dd29-4660-bc3f-af8287682d00,418ea466-269c-4a86-bbe3-c3ff10236ff2,ec19e60d-3469-49c8-90bd-158b50f22924,e0c16f70-7c65-437b-8a78-7d675ccb6c6f,4af7b929-94b3-49b5-86f1-81d7ed5d21f6,38df9f3e-f2c1-4ad7-96eb-c581d19924f1,bd52abb9-c6a7-41af-961d-d52a3fdcf2a2,443c2df3-f206-4911-96a7-f8fccb8145a9,e2153e42-2015-4795-8300-ce1ae7cdcb1d,39835648-d482-4aec-81b0-0ac7701bbe3b,83d19134-b7f2-46ff-8971-7211d2e155f5,4ac80149-5e0b-4f99-b595-1e17601213e6,cd8d1a15-6725-4fc0-ad8e-d868da3be726,023add9c-f19b-4343-9b09-f3e271b8b51b}'::uuid[])) AND ((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND EXISTS(SubPlan 1))
+               SubPlan 1
+                 ->  Index Scan using oro_message_pkey on oro_message m (never executed)
+                       Index Cond: (id = r.message_id)
+                       Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (seq > oro_member_history_from(conversation_id)))
+         ->  Index Scan using oro_messaging_identity_pkey on oro_messaging_identity i (never executed)
+               Index Cond: (id = r.user_id)
+               Filter: ((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text))
+ Planning:
+   Buffers: shared hit=61 read=2
+ Planning Time: 0.181 ms
+ Execution Time: 0.013 ms
+(18 rows)
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual time=0.002..0.002 rows=0 loops=1)
+   Sort Key: oro_attachment.created_at
+   Sort Method: quicksort  Memory: 25kB
+   ->  Seq Scan on oro_attachment (actual time=0.001..0.001 rows=0 loops=1)
+         Filter: ((deleted_at IS NULL) AND (message_id = ANY ('{9cb645a3-6eba-4515-82e8-fd32bbf3e7bf,76593627-7d83-40b1-87c9-738fb6eda63b,b68791e3-2624-4b6e-a1bd-6be7df080f43,1dd75330-b43e-45b8-9d23-4b5de6128dff,ff77e42d-20d8-43ba-b463-5235cc9118e5,3a4285ac-0671-4b27-9e5c-73676a2841fa,1d72df15-d1e3-44f4-a766-609283df725d,0252cbca-1cfc-4c96-8544-347fdcd1d457,1aa0b6a8-6d19-4715-843d-f313f9c30333,a7c4b71f-bdf2-45af-9597-1412f911babc,fd87e928-aebc-4451-8272-42636b5747fd,f7c1c6df-e130-4010-bd5a-50cc66e05c42,46a8c2a9-18ee-4d98-a251-4fbf9cc8d0ed,6c6b88a3-9734-4558-827a-387e534047c9,87c96461-9404-4e19-afd9-42455a2c7bb1,0388264d-b2e2-4460-bd27-c15463bf89b8,ca500c6c-3310-4bf2-ad49-7765ae90a5c4,9163c6de-77a4-47da-b0e6-e7c6764aede6,86b12f7f-4b61-490c-9672-75e8f5f39172,8a9d4470-bbfa-4316-984c-c1d3c56e5fe3,55c4ddbb-be77-4ae2-98fe-c5c30b49e41c,92d10fa4-c7eb-4dde-83e2-3de75d931e76,189386bd-f5ed-44b3-85cd-a9b41e3c76ce,33f69f70-9761-47a9-84f5-bb4384907081,79249fbd-d3af-45f4-bf42-1943103af18d,82cbf248-9283-4d90-afe9-025350ddcecb,1f862784-dd29-4660-bc3f-af8287682d00,418ea466-269c-4a86-bbe3-c3ff10236ff2,ec19e60d-3469-49c8-90bd-158b50f22924,e0c16f70-7c65-437b-8a78-7d675ccb6c6f,4af7b929-94b3-49b5-86f1-81d7ed5d21f6,38df9f3e-f2c1-4ad7-96eb-c581d19924f1,bd52abb9-c6a7-41af-961d-d52a3fdcf2a2,443c2df3-f206-4911-96a7-f8fccb8145a9,e2153e42-2015-4795-8300-ce1ae7cdcb1d,39835648-d482-4aec-81b0-0ac7701bbe3b,83d19134-b7f2-46ff-8971-7211d2e155f5,4ac80149-5e0b-4f99-b595-1e17601213e6,cd8d1a15-6725-4fc0-ad8e-d868da3be726,023add9c-f19b-4343-9b09-f3e271b8b51b}'::uuid[])) AND ((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (oro_member_history_from(conversation_id) IS NOT NULL) AND (((message_id IS NULL) AND (uploaded_by = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid)) OR ((message_id IS NOT NULL) AND EXISTS(SubPlan 1))))
+         SubPlan 1
+           ->  Index Scan using oro_message_pkey on oro_message m (never executed)
+                 Index Cond: (id = oro_attachment.message_id)
+                 Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (seq > oro_member_history_from(conversation_id)))
+ Planning:
+   Buffers: shared hit=101 read=4
+ Planning Time: 0.241 ms
+ Execution Time: 0.008 ms
+(13 rows)
+
+ROLLBACK
+=== 8. send in the hot group: lock, idempotency, seq, insert, read position, outbox (all of it)
+BEGIN
+SET
+                                                                                                                                                                                                                              QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ LockRows (actual time=0.115..0.116 rows=1 loops=1)
+   Buffers: shared hit=19
+   ->  Index Scan using oro_conversation_pkey on oro_conversation (actual time=0.083..0.083 rows=1 loops=1)
+         Index Cond: (id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid)
+         Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (oro_member_history_from(id) IS NOT NULL) AND ((oro_member_history_from(id) IS NOT NULL) OR (((conversation_type)::text = 'direct'::text) AND (((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_low) OR ((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_high)))))
+         Buffers: shared hit=18
+ Planning:
+   Buffers: shared hit=19
+ Planning Time: 0.062 ms
+ Execution Time: 0.132 ms
+(10 rows)
+
+                                                                                                                       QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using uq_oro_conversation_member_active on oro_conversation_member (actual time=0.002..0.002 rows=1 loops=1)
+   Index Cond: ((conversation_id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid) AND (user_id = 'f87fe021-8e31-4e66-9f98-8b8a604a2590'::uuid))
+   Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) OR (oro_member_history_from(conversation_id) IS NOT NULL)))
+   Buffers: shared hit=4
+ Planning:
+   Buffers: shared hit=27
+ Planning Time: 0.055 ms
+ Execution Time: 0.005 ms
+(8 rows)
+
+                                                                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using uq_oro_message_client on oro_message (actual time=0.068..0.068 rows=0 loops=1)
+   Index Cond: ((conversation_id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid) AND (sender_id = 'f87fe021-8e31-4e66-9f98-8b8a604a2590'::uuid) AND ((client_message_id)::text = 'plans-0000001'::text))
+   Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (seq > oro_member_history_from(conversation_id)))
+   Buffers: shared hit=2 read=4 dirtied=1
+ Planning Time: 0.036 ms
+ Execution Time: 0.072 ms
+(6 rows)
+
+                                                                                                                                                                                                                              QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Update on oro_conversation (actual time=1.085..1.085 rows=0 loops=1)
+   Buffers: shared hit=159 read=14
+   ->  Index Scan using oro_conversation_pkey on oro_conversation (actual time=0.112..0.112 rows=1 loops=1)
+         Index Cond: (id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid)
+         Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND (oro_member_history_from(id) IS NOT NULL) AND ((oro_member_history_from(id) IS NOT NULL) OR (((conversation_type)::text = 'direct'::text) AND (((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_low) OR ((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_high)))))
+         Buffers: shared hit=18
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.053 ms
+ Trigger trigger_oro_conversation_rules: time=0.750 calls=1
+ Trigger trigger_set_updated_at_oro_conversation: time=0.011 calls=1
+ Execution Time: 1.181 ms
+(12 rows)
+
+                                                                                                                                                                                                          QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Insert on oro_message (actual time=3.338..3.338 rows=0 loops=1)
+   Buffers: shared hit=70 read=28 dirtied=9
+   ->  Subquery Scan on "*SELECT*" (actual time=0.078..0.079 rows=1 loops=1)
+         Buffers: shared hit=11
+         ->  Index Scan using oro_conversation_pkey on oro_conversation (actual time=0.078..0.078 rows=1 loops=1)
+               Index Cond: (id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid)
+               Filter: (((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND ((oro_member_history_from(id) IS NOT NULL) OR (((conversation_type)::text = 'direct'::text) AND (((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_low) OR ((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_high)))))
+               Buffers: shared hit=11
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.047 ms
+ Trigger for constraint fk_oro_message_conversation: time=0.055 calls=1
+ Trigger for constraint fk_oro_message_sender: time=0.034 calls=1
+ Trigger for constraint fk_oro_message_deleted_by: time=0.003 calls=1
+ Trigger trigger_oro_message_rules: time=0.182 calls=1
+ Execution Time: 3.440 ms
+(16 rows)
+
+                                                                                                                                     QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Update on oro_conversation_member (actual time=0.687..0.687 rows=0 loops=1)
+   Buffers: shared hit=56 read=6 dirtied=2
+   ->  Index Scan using uq_oro_conversation_member_active on oro_conversation_member (actual time=0.002..0.003 rows=1 loops=1)
+         Index Cond: ((conversation_id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid) AND (user_id = 'f87fe021-8e31-4e66-9f98-8b8a604a2590'::uuid))
+         Filter: ((left_at IS NULL) AND ((product_id)::text = NULLIF(current_setting('oro.product_id'::text, true), ''::text)) AND ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) OR (oro_member_history_from(conversation_id) IS NOT NULL)))
+         Buffers: shared hit=4
+ Planning Time: 0.038 ms
+ Trigger trigger_oro_conversation_member_rules: time=0.238 calls=1
+ Trigger trigger_set_updated_at_oro_conversation_member: time=0.007 calls=1
+ Execution Time: 0.700 ms
+(10 rows)
+
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Insert on oro_outbox_event (actual time=0.180..0.180 rows=0 loops=1)
+   Buffers: shared hit=38 read=5 dirtied=3
+   ->  Result (actual time=0.007..0.007 rows=1 loops=1)
+ Planning Time: 0.008 ms
+ Execution Time: 0.184 ms
+(5 rows)
+
+ROLLBACK
+=== 9. search: a frequent word, every conversation of the power user
+BEGIN
+SET
+                                                                                                                                                                                                                            QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=5029.791..5029.795 rows=30 loops=1)
+   Buffers: shared hit=7408032 read=32152 dirtied=3
+   ->  Sort (actual time=5029.789..5029.792 rows=30 loops=1)
+         Sort Key: msg.created_at DESC
+         Sort Method: top-N heapsort  Memory: 37kB
+         Buffers: shared hit=7408032 read=32152 dirtied=3
+         ->  Result (actual time=0.491..5021.813 rows=49527 loops=1)
+               One-Time Filter: (NULLIF(current_setting('oro.product_id'::text, true), ''::text) = 'UMOJA'::text)
+               Buffers: shared hit=7408032 read=32152 dirtied=3
+               ->  Nested Loop (actual time=0.490..5018.054 rows=49527 loops=1)
+                     Buffers: shared hit=7408032 read=32152 dirtied=3
+                     ->  Nested Loop (actual time=0.178..11.684 rows=823 loops=1)
+                           Buffers: shared hit=9504 read=326 dirtied=1
+                           ->  Bitmap Heap Scan on oro_conversation_member m (actual time=0.094..3.533 rows=823 loops=1)
+                                 Recheck Cond: ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) AND (left_at IS NULL))
+                                 Filter: (((product_id)::text = 'UMOJA'::text) AND ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) OR (oro_member_history_from(conversation_id) IS NOT NULL)))
+                                 Heap Blocks: exact=770
+                                 Buffers: shared hit=540 read=237 dirtied=1
+                                 ->  Bitmap Index Scan on idx_oro_conversation_member_user (actual time=0.048..0.048 rows=824 loops=1)
+                                       Index Cond: (user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid)
+                                       Buffers: shared hit=7
+                           ->  Index Scan using oro_conversation_pkey on oro_conversation c (actual time=0.010..0.010 rows=1 loops=823)
+                                 Index Cond: (id = m.conversation_id)
+                                 Filter: (((product_id)::text = 'UMOJA'::text) AND (organization_id = '0f8b3bfc-371f-40eb-9b0a-f77777d057a8'::uuid) AND ((oro_member_history_from(id) IS NOT NULL) OR (((conversation_type)::text = 'direct'::text) AND (((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_low) OR ((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_high)))))
+                                 Buffers: shared hit=8964 read=89
+                     ->  Index Scan using uq_oro_message_seq on oro_message msg (actual time=0.090..6.078 rows=60 loops=823)
+                           Index Cond: (conversation_id = c.id)
+                           Filter: ((deleted_at IS NULL) AND ((message_type)::text <> 'system'::text) AND ((product_id)::text = 'UMOJA'::text) AND (seq > oro_member_history_from(conversation_id)) AND (body ~~* '%invoice%'::text))
+                           Rows Removed by Filter: 1223
+                           Buffers: shared hit=7398528 read=31826 dirtied=2
+ Planning:
+   Buffers: shared hit=41
+ Planning Time: 0.227 ms
+ Execution Time: 5029.834 ms
+(34 rows)
+
+ROLLBACK
+=== 10. search: a rare text, every conversation of the typical user
+BEGIN
+SET
+                                                                                                                                                                                                        QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=16.027..16.028 rows=0 loops=1)
+   Buffers: shared hit=17435 read=253
+   ->  Sort (actual time=16.027..16.027 rows=0 loops=1)
+         Sort Key: msg.created_at DESC
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=17435 read=253
+         ->  Result (actual time=16.025..16.025 rows=0 loops=1)
+               One-Time Filter: (NULLIF(current_setting('oro.product_id'::text, true), ''::text) = 'UMOJA'::text)
+               Buffers: shared hit=17435 read=253
+               ->  Nested Loop (actual time=16.024..16.024 rows=0 loops=1)
+                     Buffers: shared hit=17435 read=253
+                     ->  Nested Loop (actual time=0.152..4.335 rows=40 loops=1)
+                           Buffers: shared hit=375 read=108
+                           ->  Index Scan using idx_oro_conversation_member_user on oro_conversation_member m (actual time=0.032..0.384 rows=40 loops=1)
+                                 Index Cond: (user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid)
+                                 Filter: (((product_id)::text = 'UMOJA'::text) AND ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) OR (oro_member_history_from(conversation_id) IS NOT NULL)))
+                                 Buffers: shared hit=5 read=38
+                           ->  Index Scan using uq_oro_conversation_product on oro_conversation c (actual time=0.098..0.098 rows=1 loops=40)
+                                 Index Cond: ((id = m.conversation_id) AND ((product_id)::text = 'UMOJA'::text))
+                                 Filter: ((organization_id = '856f1936-b3f2-4a82-a7df-980d00c5cf40'::uuid) AND ((oro_member_history_from(id) IS NOT NULL) OR (((conversation_type)::text = 'direct'::text) AND (((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_low) OR ((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_high)))))
+                                 Buffers: shared hit=370 read=70
+                     ->  Index Scan using uq_oro_message_seq on oro_message msg (actual time=0.292..0.292 rows=0 loops=40)
+                           Index Cond: (conversation_id = c.id)
+                           Filter: ((deleted_at IS NULL) AND ((message_type)::text <> 'system'::text) AND ((product_id)::text = 'UMOJA'::text) AND (seq > oro_member_history_from(conversation_id)) AND (body ~~* '%visa contract%'::text))
+                           Rows Removed by Filter: 60
+                           Buffers: shared hit=17060 read=145
+ Planning:
+   Buffers: shared hit=30 read=9
+ Planning Time: 0.459 ms
+ Execution Time: 16.040 ms
+(30 rows)
+
+ROLLBACK
+=== 11. search: in the hot group only
+BEGIN
+SET
+                                                                                                                                                                                                        QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit (actual time=4778.691..4778.693 rows=30 loops=1)
+   Buffers: shared hit=7001505 read=29831 dirtied=1
+   ->  Sort (actual time=4690.279..4690.280 rows=30 loops=1)
+         Sort Key: msg.created_at DESC
+         Sort Method: top-N heapsort  Memory: 40kB
+         Buffers: shared hit=7001505 read=29831 dirtied=1
+         ->  Result (actual time=0.379..4680.520 rows=46966 loops=1)
+               One-Time Filter: (NULLIF(current_setting('oro.product_id'::text, true), ''::text) = 'UMOJA'::text)
+               Buffers: shared hit=7001505 read=29831 dirtied=1
+               ->  Nested Loop (actual time=0.369..4677.191 rows=46966 loops=1)
+                     Buffers: shared hit=7001505 read=29831 dirtied=1
+                     ->  Nested Loop (actual time=0.196..0.261 rows=1 loops=1)
+                           Buffers: shared hit=15 read=2 dirtied=1
+                           ->  Index Scan using uq_oro_conversation_product on oro_conversation c (actual time=0.189..0.196 rows=1 loops=1)
+                                 Index Cond: ((id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid) AND ((product_id)::text = 'UMOJA'::text))
+                                 Filter: ((organization_id = '0f8b3bfc-371f-40eb-9b0a-f77777d057a8'::uuid) AND ((oro_member_history_from(id) IS NOT NULL) OR (((conversation_type)::text = 'direct'::text) AND (((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_low) OR ((NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid = direct_identity_high)))))
+                                 Buffers: shared hit=10 read=1
+                           ->  Index Scan using uq_oro_conversation_member_active on oro_conversation_member m (actual time=0.003..0.059 rows=1 loops=1)
+                                 Index Cond: ((conversation_id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid) AND (user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid))
+                                 Filter: (((product_id)::text = 'UMOJA'::text) AND ((user_id = (NULLIF(current_setting('oro.identity_id'::text, true), ''::text))::uuid) OR (oro_member_history_from(conversation_id) IS NOT NULL)))
+                                 Buffers: shared hit=5 read=1 dirtied=1
+                     ->  Index Scan using uq_oro_message_seq on oro_message msg (actual time=0.172..4672.691 rows=46966 loops=1)
+                           Index Cond: (conversation_id = 'aeb2ebf8-4511-4f34-bb8b-af6ebeb570b4'::uuid)
+                           Filter: ((deleted_at IS NULL) AND ((message_type)::text <> 'system'::text) AND ((product_id)::text = 'UMOJA'::text) AND (seq > oro_member_history_from(conversation_id)) AND (body ~~* '%invoice%'::text))
+                           Rows Removed by Filter: 953034
+                           Buffers: shared hit=7001490 read=29829
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.113 ms
+ Execution Time: 4780.045 ms
+(30 rows)
+
+ROLLBACK
+=== 12. the members of the biggest group (its page of information)
+BEGIN
+SET
+psql:/plans/explain.sql:99: error: no rows returned for \gset

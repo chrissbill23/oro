@@ -245,29 +245,34 @@ class LiveHubTest {
                 return emitter;
             }
         };
-        threaded.setQueueCapacity(20);
+        // a queue of 60: the reader never has more than one burst of 50 waiting, the stuck one piles up both
+        threaded.setQueueCapacity(60);
         UUID stuckId = UUID.randomUUID();
         UUID amara = UUID.randomUUID();
         StuckEmitter stuck = (StuckEmitter) threaded.connect(Actor.umoja(stuckId, ACME), "stuck", null);
         RecordingEmitter reader = (RecordingEmitter) threaded.connect(Actor.umoja(amara, ACME), "amara", null);
 
-        long start = System.nanoTime();
-        for (int i = 0; i < 50; i++) {
-            threaded.send(List.of(stuckId, amara), com.asata.org.oro.enums.Product.UMOJA, ACME, Map.of("type", "typing", "n", i));
+        for (int burst = 0; burst < 2; burst++) {
+            long start = System.nanoTime();
+            for (int i = 0; i < 50; i++) {
+                threaded.send(List.of(stuckId, amara), com.asata.org.oro.enums.Product.UMOJA, ACME,
+                        Map.of("type", "typing", "n", burst * 50 + i));
+            }
+            // the sender never waited for the stuck client
+            assertThat(java.time.Duration.ofNanos(System.nanoTime() - start)).isLessThan(java.time.Duration.ofSeconds(1));
+            // the reader got the burst within a second
+            int expected = (burst + 1) * 50;
+            long deadline = System.currentTimeMillis() + 1000;
+            while (reader.ofType("typing").size() < expected && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(reader.ofType("typing")).hasSize(expected);
         }
-        // the sender never waited for the stuck client
-        assertThat(java.time.Duration.ofNanos(System.nanoTime() - start)).isLessThan(java.time.Duration.ofSeconds(1));
-        // the reader got everything within a second
-        long deadline = System.currentTimeMillis() + 1000;
-        while (reader.ofType("typing").size() < 50 && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
-        assertThat(reader.ofType("typing")).hasSize(50);
         // the stuck one is ended, offline for the others, counted
         assertThat(threaded.online(com.asata.org.oro.enums.Product.UMOJA, ACME)).containsExactly("amara");
         assertThat(threaded.streamsEndedSlow()).isEqualTo(1);
         stuck.release.countDown();
-        deadline = System.currentTimeMillis() + 1000;
+        long deadline = System.currentTimeMillis() + 1000;
         while (!stuck.completed && System.currentTimeMillis() < deadline) {
             Thread.sleep(10);
         }

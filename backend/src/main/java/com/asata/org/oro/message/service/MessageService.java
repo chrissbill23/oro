@@ -210,28 +210,18 @@ public class MessageService {
         if (conversationId != null) {
             access.requireActiveMember(actor, access.requireConversation(actor, conversationId));
         }
-        String sql = """
-                SELECT msg.* FROM oro_message msg
-                JOIN oro_conversation c ON c.id = msg.conversation_id
-                JOIN oro_conversation_member m ON m.conversation_id = c.id AND m.user_id = :me AND m.left_at IS NULL
-                WHERE c.product_id = :product AND msg.deleted_at IS NULL AND msg.message_type <> 'system'
-                  AND msg.body ILIKE :pattern ESCAPE '!'""";
-        sql += actor.organizationId() == null ? " AND c.organization_id IS NULL" : " AND c.organization_id = :organization";
-        if (conversationId != null) {
-            sql += " AND c.id = :conversation";
-        }
-        var found = em.createNativeQuery(sql + " ORDER BY msg.created_at DESC LIMIT " + MAX_SEARCH_RESULTS, Message.class)
-                .setParameter("me", actor.identityId())
-                .setParameter("product", actor.product().code())
+        // oro_search_messages applies the rule of the policy of the messages itself (the identity and the product of
+        // the transaction), so that the trigram index serves the text: under RLS none can (ILIKE is not leakproof)
+        var found = em.createNativeQuery("SELECT * FROM oro_search_messages(:pattern, :organization, :conversation, :limit)",
+                        Message.class).unwrap(org.hibernate.query.NativeQuery.class)
                 // the text as it is: its wildcards escaped
-                .setParameter("pattern", "%" + query.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%");
-        if (actor.organizationId() != null) {
-            found.setParameter("organization", actor.organizationId());
-        }
-        if (conversationId != null) {
-            found.setParameter("conversation", conversationId);
-        }
-        return found.getResultList();
+                .setParameter("pattern", "%" + query.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%")
+                .setParameter("organization", actor.organizationId(), UUID.class)
+                .setParameter("conversation", conversationId, UUID.class)
+                .setParameter("limit", MAX_SEARCH_RESULTS);
+        @SuppressWarnings("unchecked")
+        List<Message> result = found.getResultList();
+        return result;
     }
 
     /** the sender changes the text of its message (edited_at by the database) */

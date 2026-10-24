@@ -11,7 +11,7 @@ Caddy in production ([Deployment](deployment.md)).
   The admin who adds a member chooses whether they read the history; by default they do not.
 - Messages in a strict order, without gaps. A retry with the same client message id returns the stored message
   instead of a duplicate. Messages can be edited and deleted (the content is erased), and searched within what the
-  user may read (a trigram index).
+  user may read (a trigram index, through `oro_search_messages`).
 - Reactions: any single emoji, skin tones, flags and ZWJ sequences included.
 - Read and delivered positions, unread counts, "Seen", typing, presence and mute.
 - Files uploaded through the API to a local storage, downloaded by the members only, with safe headers. Their real
@@ -73,7 +73,7 @@ Caddy in production ([Deployment](deployment.md)).
 - 119 source files under `backend/src/main/java/com/asata/org/oro`: identity, conversation, message, attachment
   (storage, scan, purge), live, outbox, config (security, web, rate limits, metrics, production) and context (the
   database session).
-- 156 integration tests in 33 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- 157 integration tests in 33 classes. The query plans on 10 million messages are in `backend/perf`., on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
 - Umoja already uses Oro: its frontend has a Messages page, and its backend sends its organizations and teams to Oro

@@ -635,8 +635,11 @@ a bug in the services, the separate logins against an injection.
 | Attachments of a message | `idx_oro_attachment_message (message_id) WHERE message_id IS NOT NULL` |
 | Due outbox events, purge | `idx_oro_outbox_event_due (next_attempt_at) WHERE status IN ('pending', 'processing')`, `idx_oro_outbox_event_processed` |
 | Direct conversation of a pair | `uq_oro_conversation_direct_personal` / `_organization` |
+| Search of the text | `idx_oro_message_body_trgm` (pg_trgm GIN on `body`), through `oro_search_messages`: under RLS no index serves `ILIKE` |
+| Count of the members in the list | `uq_oro_conversation_member_active`, through `oro_member_count` (one check of the membership, not one per member) |
 
-No other index: each one would slow writes without serving a query.
+No other index: each one would slow writes without serving a query. The plans on 10 million messages, and how to run
+them again, are in [`perf/`](perf/README.md).
 
 ### Partitioning
 
