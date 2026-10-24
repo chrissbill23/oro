@@ -9,7 +9,8 @@ machine:
 ~/asata/umoja              Umoja (its backend, its frontend, Caddy in front)
 ```
 
-Each has a `docker-compose.production.yml` over its `docker-compose.yml`. Only Caddy opens ports (80 and 443); every
+Each has a `docker-compose.production.yml` over its `docker-compose.yml`. When something goes wrong: the
+[runbooks](runbooks.md), one per alert. Only Caddy opens ports (80 and 443); every
 other service talks on the Docker network `asataDB`. The secrets are files in `secrets/` (git ignored, mode 600), read
 by the services as Docker secrets, never in an image nor an environment.
 

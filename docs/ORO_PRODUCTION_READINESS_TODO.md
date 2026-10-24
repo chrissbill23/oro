@@ -591,6 +591,7 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Verification: external scan and curl checks
 
 - [ ] `ORO-LCH-016` — P1 — Runbooks
+  - Partly done (2026-10-24): `docs/runbooks.md`: one section per alert (what it means, what to check, what to do), the situations (the database down, a disk full, a user revoked at once, a key leaked) and the planned operations (deploy, roll back, rotate, restore). Rehearsed on the local stack: a stuck Oro restarted, a graceful stop, a user suspended and reactivated with the documented commands, the replay listed, the restore drills, a schema upgrade. Found and fixed on the way: the logs of the containers were never rotated (json-file without limit: a disk filled in time): 5 files of 50 MB per container in the three production compose files. Left: who is on call (to fill in), the rotations and a full recovery in place on a staging server.
   - Current state: Partially implemented (`backend/README.md` covers operations briefly)
   - Evidence: `backend/README.md` (Operations), `docs/quick-start.md`.
   - Action: deployment and rollback, key and secret rotation, restore, replaying events, handling a full disk,

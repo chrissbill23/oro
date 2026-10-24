@@ -3,8 +3,23 @@
 # The production profile (ProductionChecks refuses a setting of development), the secrets as files (secrets/, git
 # ignored, mode 600: one per secret, see docs/deployment.md), nothing published: the browsers reach Oro through the proxy
 # of a product (Umoja's nginx, behind Caddy), Prometheus and Alertmanager on 127.0.0.1 only (an SSH tunnel).
+# the logs of every container rotated: 5 files of 50 MB at most (json-file keeps them all otherwise, until the disk is
+# full)
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 50m
+    max-file: "5"
+
 services:
+  alertmanager:
+    logging: *logging
+  prometheus:
+    logging: *logging
+  clamav:
+    logging: *logging
   oro:
+    logging: *logging
     # the environment of production only: no development default (a password in an environment would win over the
     # secret files)
     environment: !override
@@ -31,6 +46,7 @@ services:
     ports: !reset []
     restart: unless-stopped
   files-backup:
+    logging: *logging
     environment: !override
       RESTIC_REPOSITORY: ${ORO_FILES_BACKUP_REPOSITORY:?the bucket off the host, s3:<endpoint>/<bucket>/oro-files}
       RESTIC_PASSWORD_FILE: /run/secrets/files_backup_password
