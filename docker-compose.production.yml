@@ -39,6 +39,8 @@ services:
       ORO_SMTP_STARTTLS: "true"
       ORO_ACCOUNTS_LINK_BASE: ${ORO_ACCOUNTS_LINK_BASE:?the HTTPS address of the Oro app, e.g. https://oro.example.org}
       ORO_ACCOUNTS_MAIL_FROM: ${ORO_ACCOUNTS_MAIL_FROM:?the sender, e.g. Oro <no-reply@oro.example.org>}
+      # who the push services contact about Oro's notifications
+      ORO_PUSH_SUBJECT: ${ORO_PUSH_SUBJECT:?a mailto: or https: contact, e.g. mailto:ops@oro.example.org}
       ORO_OUTBOX_ENABLED: "true"
       ORO_API_DOCS: "false"
       UMOJA_JWKS_URI: http://umoja:8080/umoja/.well-known/jwks.json
@@ -60,6 +62,9 @@ services:
         target: oro.accounts.signing-key
       - source: smtp_password
         target: spring.mail.password
+      # the VAPID key of the notifications (EC P-256, PKCS#8 base64): lost, every browser subscribes again
+      - source: oro_push_vapid_private_key
+        target: oro.push.vapid-private-key
       - source: umoja_integration_keys
         target: oro.security.products.UMOJA.integration-keys
     ports: !reset []
@@ -86,6 +91,8 @@ secrets:
     file: ./secrets/oro_accounts_signing_key
   smtp_password:
     file: ./secrets/smtp_password
+  oro_push_vapid_private_key:
+    file: ./secrets/oro_push_vapid_private_key
   # name:sha256 of each key, comma separated (never the keys)
   umoja_integration_keys:
     file: ./secrets/umoja_integration_keys

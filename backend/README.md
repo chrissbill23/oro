@@ -115,6 +115,8 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction; the API's login never takes `oro_system`, and each context only on its own login; slow statements and long lock waits end |
 | `CatchUpTest` | Over HTTP: a stream cut, two messages sent meanwhile, the stream back; the list and `?after=` give what was missed |
+| `WebPushCryptoTest` | The encryption of RFC 8291 against its own example, byte for byte; the VAPID keys and their ES256 signature |
+| `PushTest` | Against a push service of the test: someone away gets who and where, never the text (decrypted with the browser's key), signed by Oro; nobody connected, muted or not accepted; a subscription gone removed; the endpoints of unknown services refused |
 | `SafetyTest` | A stranger's request (one message, accepted), people of a group are no strangers, decline and block, a block both ways and on groups (the database too), invitations, a report kept after the sender deletes, purged at 90 days, never read by the API; blocks erased with their person |
 | `ErasureTest` | An erasure by Umoja and by the person: its messages deletions, its reactions and uploads gone, the mentions and system messages anonymous and not marked edited, nothing names it; idempotent; the person comes back as someone new; the flag of the erasure hides no user's edit |
 | `PasswordResetTest` | A reset by link ends every session (Umoja's too), unlocks and verifies; the same answer for an unknown address; a verification link resets nothing; the limits per address and per recipient |
@@ -276,6 +278,25 @@ Umoja's organizations decide who meets whom there. In Oro (personal), anyone cou
 
 The database decides it too (the triggers of the members and the messages, `oro_blocked`, `oro_knows`): a membership
 of a stranger is created pending, a message refused while pending, blocked, declined, or after the first of a request.
+
+## Push notifications
+
+Web Push (the browsers; the mobile apps later): `GET /push/key` gives Oro's public key (the `applicationServerKey`
+of `pushManager.subscribe`), `PUT /push/subscriptions` takes the browser's subscription, `DELETE
+/push/subscriptions?endpoint=` removes it.
+
+- **When**: a new message, to the members with no stream open on Oro (away); never its sender, a muted conversation,
+  nor a request or an invitation not accepted. One topic per conversation: a newer push replaces one not delivered.
+- **What**: who and where, never the text: "Amani" / "New message", "Family" / "New message from Amani" (the first
+  name of the Asata account), and the conversation's id. Encrypted for the browser (RFC 8291) and signed by Oro
+  (VAPID, RFC 8292), with the JDK only: the push services relay bytes they cannot read.
+- **Where to**: only the push services of Google, Mozilla, Apple and Microsoft, over HTTPS (`oro.push.allowed-hosts`):
+  Oro posts to the address a browser gives, so never an address of its own network. A subscription the service says
+  gone (404, 410) is removed; 10 browsers per identity at most.
+- **Keys**: `ORO_PUSH_VAPID_PRIVATE_KEY` (EC P-256, a secret file in production; unset: new keys at each start,
+  development only); `ORO_PUSH_SUBJECT`, the contact the push services see.
+- Best effort, from the outbox (`PushOutboxEventHandler`, beside the streams'): a push that fails never fails the
+  event; an event over 10 minutes old pushes nothing. `oro_push_sent_total{outcome}`.
 
 ## Rate limits
 
@@ -752,6 +773,7 @@ What Oro measures, besides the requests by route and status (`http_server_reques
 | `oro_conversation_lock_seconds` | The wait for the row of a conversation (sends take turns) |
 | `oro_streams_open` | The streams open on the instance |
 | `oro_streams_ended_slow_total` | The streams ended because their client read too slowly (500 events behind) |
+| `oro_push_sent_total{outcome}` | The pushes: sent, gone (the subscription removed), failed |
 | `oro_erasures_pending`, `oro_erasures_oldest_pending_seconds` | The erasures of people asked and not done (alert `OroErasureStuck` past an hour) |
 | `oro_live_events_stale_total` | The outbox events too old to send (the outbox late, a retry, a replay): their recipients reconnected instead |
 | `oro_outbox_pending`, `oro_outbox_failed`, `oro_outbox_oldest_pending_seconds` | The outbox: waiting, failed for good, the lag of the live events |

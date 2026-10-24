@@ -218,6 +218,11 @@ public class LiveHub implements SmartLifecycle {
         return closed;
     }
 
+    /** the identity has a stream open on this instance: present (no push for it) */
+    public boolean isConnected(UUID identityId) {
+        return !connections.getOrDefault(identityId, Set.of()).isEmpty();
+    }
+
     /** the streams open on this instance */
     public int openStreams() {
         return open.get();

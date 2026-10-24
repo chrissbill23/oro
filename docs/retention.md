@@ -33,7 +33,7 @@ or Umoja for one of its people (`POST /internal/identities/{userId}/erase`; Umoj
 |---|---|
 | Its identity | Deactivated at once: it leaves every conversation, its streams close, its token opens nothing |
 | Its messages | Deletions, within a minute (the erasure works a batch at a time): no text, no metadata, no reactions; their files purged |
-| Its reactions on the messages of others, its uploads never sent, its blocks (made or received) | Gone |
+| Its reactions on the messages of others, its uploads never sent, its blocks (made or received), its push subscriptions | Gone |
 | The system messages that name it ("X joined, added by Y") and the mentions of it in the messages of others | Name `erased-<id>` instead: the others' texts stay, never marked edited |
 | Its identity at the end | Its external id becomes `erased-<id>`: nothing that stays links to the person |
 | Its Asata account, its Umoja and Mokili data | Untouched: Oro erases Oro's data only. It may come back to Oro, as someone new |
@@ -51,6 +51,8 @@ harassment be acted on; it is the one place a deleted message lives on, for that
 - **Logs** never hold the content of a message or a file, nor database rows (`LogPrivacyTest`); they hold ids.
 - **Metrics** (Prometheus, 15 days) hold counts and times only.
 - **Outbox events** (7 days once processed) hold ids and numbers only.
+- **Pushes** carry who and where, never the text, encrypted for the browser: the push services keep them at most a day
+  for a device that is off.
 
 ## Out of Oro's reach
 

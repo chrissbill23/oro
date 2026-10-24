@@ -772,6 +772,7 @@ transaction-local and tested; the product isolation by composite foreign keys is
 ## P3: Product capabilities
 
 - [ ] `ORO-FEA-001` — P3 — Push notifications
+  - Partly done (2026-10-24): decided: Web Push first (mobile later), who and where never the text, every message when away. Oro's side is done: subscriptions (`oro_push_subscription`, known push services only), the encryption (RFC 8291, the JDK only, checked against the RFC's example) and VAPID (RFC 8292), `PushOutboxEventHandler` (away, not the sender, not muted, not pending; one topic per conversation), keys as secrets, `ProductionChecks` (`WebPushCryptoTest`, `PushTest` with a push service of the test). Left: the clients' service workers (Umoja's frontend, the Oro app) that subscribe and show them; Firebase and Apple for the mobile apps once they exist.
   - Current state: Missing
   - Evidence: `OutboxEventHandler` is the extension point; mute exists (`ConversationService.mute`).
   - Action: device registration per identity, Web Push (VAPID) first, FCM and APNs for mobile apps; an outbox

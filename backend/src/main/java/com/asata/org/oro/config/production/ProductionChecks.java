@@ -51,6 +51,18 @@ public class ProductionChecks {
         if (!env.getProperty("oro.accounts.cookie-secure", Boolean.class, true)) {
             problems.add("the refresh cookie is not Secure (ORO_COOKIE_SECURE)");
         }
+        if (env.getProperty("oro.push.enabled", Boolean.class, true)) {
+            if (env.getProperty("oro.push.vapid-private-key", "").isBlank()) {
+                problems.add("no push key (ORO_PUSH_VAPID_PRIVATE_KEY): every restart would end the browsers' subscriptions");
+            }
+            String subject = env.getProperty("oro.push.subject", "");
+            if (!(subject.startsWith("mailto:") || subject.startsWith("https://")) || subject.contains("localhost")) {
+                problems.add("the push contact is not a real mailto: or https: (ORO_PUSH_SUBJECT)");
+            }
+            if (env.getProperty("oro.push.allow-http", Boolean.class, false)) {
+                problems.add("pushes to http endpoints are allowed (oro.push.allow-http)");
+            }
+        }
         String smtp = env.getProperty("spring.mail.host", "");
         if (smtp.isBlank() || smtp.equals("localhost") || smtp.equals("mailpit") || smtp.startsWith("127.")) {
             problems.add("the emails of the accounts go to a development mailbox (ORO_SMTP_HOST)");

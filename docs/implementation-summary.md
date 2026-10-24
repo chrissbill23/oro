@@ -18,6 +18,7 @@ Caddy in production ([Deployment](deployment.md)).
   type is checked, photo metadata is removed, and each file is scanned by ClamAV before anyone can download it.
 - A live stream per user (Server-Sent Events): messages, reactions, conversations, typing, reads and presence. A
   client whose stream was cut reads what it missed on its next `hello` (the contract is in the backend README).
+- Web Push notifications when away: who and where, never the text, encrypted for the browser.
 - Umoja team chats: one group per team, following its members, with system messages for who joins and leaves.
 
 ## Security and privacy
@@ -75,7 +76,7 @@ Caddy in production ([Deployment](deployment.md)).
 - 119 source files under `backend/src/main/java/com/asata/org/oro`: identity, conversation, message, attachment
   (storage, scan, purge), live, outbox, config (security, web, rate limits, metrics, production) and context (the
   database session).
-- 190 tests in 39 classes. The query plans on 10 million messages and the load test (about 1,000 people active at
+- 197 tests in 41 classes. The query plans on 10 million messages and the load test (about 1,000 people active at
   once on 2 CPUs, with 5,000 connected) are in `backend/perf`., on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
@@ -90,7 +91,7 @@ Caddy in production ([Deployment](deployment.md)).
 - Who is on call, and the runbooks rehearsed on a staging server ([Runbooks](runbooks.md)).
 - An alert receiver, the off-server backup buckets, and restore drills on a schedule.
 - Object storage for the files (not needed while they stay on a backed-up volume of one server).
-- Push notifications.
+- The service workers of the clients that take the push notifications (Oro sends them), and mobile push.
 - Several instances: the streams, the presence and the rate limits live in the memory of one.
 - Moderation by the admins, edit history and threads.
 

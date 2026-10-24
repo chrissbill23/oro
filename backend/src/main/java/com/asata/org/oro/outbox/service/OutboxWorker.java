@@ -29,15 +29,16 @@ public class OutboxWorker {
     private final DbSession session;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
-    private final OutboxEventHandler handler;
+    /** every consumer of the outbox (the streams, the pushes): an event is published once all took it */
+    private final List<OutboxEventHandler> handlers;
     private final OutboxProperties properties;
 
     public OutboxWorker(DbSession session, @Qualifier("systemJdbcTemplate") JdbcTemplate jdbc,
-                        OutboxEventHandler handler, OutboxProperties properties) {
+                        List<OutboxEventHandler> handlers, OutboxProperties properties) {
         this.session = session;
         this.jdbc = jdbc;
         this.tx = session.systemTransaction();
-        this.handler = handler;
+        this.handlers = handlers;
         this.properties = properties;
     }
 
@@ -46,7 +47,9 @@ public class OutboxWorker {
         int published = 0;
         for (ClaimedEvent event : claim(workerId, properties.getBatchSize())) {
             try {
-                handler.handle(event);
+                for (OutboxEventHandler handler : handlers) {
+                    handler.handle(event);
+                }
                 if (complete(event.id(), workerId)) {
                     published++;
                 }

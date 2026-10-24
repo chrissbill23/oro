@@ -212,6 +212,14 @@ oro:
       erase: { per-minute: 3, burst: 3 }
       report: { per-minute: 10, burst: 10 }
       block: { per-minute: 30, burst: 20 }
+      push-subscribe: { per-minute: 10, burst: 10 }
+  # the notifications of the people away (Web Push): Oro's VAPID key (EC P-256, PKCS#8 base64:
+  #   openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -outform DER | base64
+  # unset: a new key at each start, development only), its contact for the push services
+  push:
+    enabled: ${ORO_PUSH_ENABLED:true}
+    vapid-private-key: ${ORO_PUSH_VAPID_PRIVATE_KEY:}
+    subject: ${ORO_PUSH_SUBJECT:mailto:ops@oro.localhost}
   # the erasures asked (a person's data, ErasureService): carried out every interval, a batch at a time
   erasure:
     enabled: ${ORO_ERASURE_ENABLED:true}

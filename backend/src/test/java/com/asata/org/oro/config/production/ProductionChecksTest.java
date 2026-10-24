@@ -16,6 +16,8 @@ class ProductionChecksTest {
                 .withProperty("oro.account-datasource.password", "a-third-long-password-of-the-vault")
                 .withProperty("oro.accounts.signing-key", "MIIG-a-key-of-the-vault")
                 .withProperty("spring.mail.host", "smtp.provider.example")
+                .withProperty("oro.push.vapid-private-key", "MIGH-a-key-of-the-vault")
+                .withProperty("oro.push.subject", "mailto:ops@asata.example")
                 .withProperty("oro.accounts.link-base", "https://oro.asata.example")
                 .withProperty("oro.attachments.scan", "clamav")
                 .withProperty("springdoc.api-docs.enabled", "false")
@@ -42,6 +44,7 @@ class ProductionChecksTest {
                 .withProperty("oro.accounts.signing-key", "")
                 .withProperty("oro.accounts.cookie-secure", "false")
                 .withProperty("spring.mail.host", "mailpit")
+                .withProperty("oro.push.vapid-private-key", "")
                 .withProperty("oro.accounts.link-base", "http://localhost:4300")
                 .withProperty("oro.attachments.scan", "none")
                 .withProperty("springdoc.api-docs.enabled", "true")
@@ -50,7 +53,7 @@ class ProductionChecksTest {
                 .withProperty("management.server.port", "8082")
                 .withProperty("oro.security.products.UMOJA.integration-keys", "");
 
-        assertThat(ProductionChecks.problems(development)).hasSize(13);
+        assertThat(ProductionChecks.problems(development)).hasSize(14);
         assertThatThrownBy(() -> new ProductionChecks(development))
                 .hasMessageContaining("does not start in production")
                 .hasMessageContaining("scan is not clamav")

@@ -66,6 +66,9 @@ cp ../1_ASATA_DATABASE/secrets/oro_api_db_password ../1_ASATA_DATABASE/secrets/o
 # the key that signs the tokens of Oro's accounts: in the vault too (lost, everyone signs in again)
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 \
   | tr -d '\n' > secrets/oro_accounts_signing_key
+# the key of the notifications (Web Push): in the vault too (lost, every browser subscribes again)
+openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 \
+  | tr -d '\n' > secrets/oro_push_vapid_private_key
 UMOJA_KEY=$(openssl rand -hex 32)                 # Umoja's, in step 3; Oro keeps its hash only
 printf 'current:%s' "$(printf %s "$UMOJA_KEY" | shasum -a 256 | cut -d' ' -f1)" > secrets/umoja_integration_keys
 mkpass > secrets/files_backup_password
@@ -76,6 +79,7 @@ ORO_SMTP_HOST=smtp.provider.example
 ORO_SMTP_USERNAME=...
 ORO_ACCOUNTS_LINK_BASE=https://oro.example.org
 ORO_ACCOUNTS_MAIL_FROM=Oro <no-reply@oro.example.org>
+ORO_PUSH_SUBJECT=mailto:ops@oro.example.org
 ORO_FILES_BACKUP_REPOSITORY=s3:<endpoint>/<bucket>/oro-files
 ORO_FILES_BACKUP_S3_KEY=...
 ORO_FILES_BACKUP_S3_SECRET=...
