@@ -18,6 +18,11 @@ import java.util.*;
  * gone (the one who left or was removed hears it too, to drop the conversation)</li>
  * </ul>
  * Delivered at least once: the clients read again what changed, which is idempotent.
+ * <p>
+ * An event older than oro.live.event-ttl (2 minutes: the outbox was late, or the event failed and was retried or
+ * replayed) is not sent: by then a client may hold newer data, and old events in a burst help nobody. Its recipients'
+ * streams are told to reconnect instead, and their clients read again what changed, as on every connection
+ * (oro_live_events_stale_total). A handler that keeps failing still ends failed, and alerts (OroOutboxFailed).
  */
 @Slf4j
 @Component
@@ -26,6 +31,13 @@ public class LiveOutboxEventHandler implements OutboxEventHandler {
 
     private final LiveEvents live;
     private final JsonMapper json;
+    private final io.micrometer.core.instrument.MeterRegistry meters;
+    private java.time.Duration eventTtl = java.time.Duration.ofMinutes(2);
+
+    @org.springframework.beans.factory.annotation.Value("${oro.live.event-ttl:PT2M}")
+    void setEventTtl(java.time.Duration eventTtl) {
+        this.eventTtl = eventTtl;
+    }
 
     @Override
     public void handle(ClaimedEvent event) {
@@ -55,6 +67,14 @@ public class LiveOutboxEventHandler implements OutboxEventHandler {
             }
         }
         live.put("conversationId", conversationId);
+        java.time.Duration age = java.time.Duration.between(event.createdAt(), java.time.Instant.now());
+        if (age.compareTo(eventTtl) > 0) {
+            int streams = this.live.reconnectConversation(conversationId, extra);
+            meters.counter("oro.live.events.stale").increment();
+            log.info("outbox event {} {} is {} s old: not sent, {} streams told to reconnect", event.id(),
+                    event.eventType(), age.toSeconds(), streams);
+            return;
+        }
         this.live.toConversation(conversationId, live, extra);
     }
 

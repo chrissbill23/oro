@@ -192,3 +192,5 @@ oro:
     # the streams of a user (its tabs and devices), and of this instance: the next one is refused (429, 503)
     max-streams-per-user: 5
     max-streams: 10000
+    # an outbox event older than this is not sent: its recipients' streams reconnect and read again what changed
+    event-ttl: PT2M

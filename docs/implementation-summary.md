@@ -16,7 +16,8 @@ Caddy in production ([Deployment](deployment.md)).
 - Read and delivered positions, unread counts, "Seen", typing, presence and mute.
 - Files uploaded through the API to a local storage, downloaded by the members only, with safe headers. Their real
   type is checked, photo metadata is removed, and each file is scanned by ClamAV before anyone can download it.
-- A live stream per user (Server-Sent Events): messages, reactions, conversations, typing, reads and presence.
+- A live stream per user (Server-Sent Events): messages, reactions, conversations, typing, reads and presence. A
+  client whose stream was cut reads what it missed on its next `hello` (the contract is in the backend README).
 - Umoja team chats: one group per team, following its members, with system messages for who joins and leaves.
 
 ## Security and privacy
@@ -44,7 +45,8 @@ Caddy in production ([Deployment](deployment.md)).
 ## Reliability
 
 - Outbox: an event is written in the same transaction as its change and published later by a worker, with retries,
-  backoff and leases. Workers never claim the same event (`SKIP LOCKED`).
+  backoff and leases. Workers never claim the same event (`SKIP LOCKED`). A failed event alerts and is replayed with
+  `ops/outbox-replay.sh`; an event too old to be worth sending makes its recipients reconnect and read again.
 - Each stream has its own queue and writer, so a client that reads slowly holds up only itself; one 500 events
   behind is ended and reconnects.
 - A send locks its conversation, which gives the order without gaps. Concurrent openings of the same direct
@@ -71,7 +73,7 @@ Caddy in production ([Deployment](deployment.md)).
 - 119 source files under `backend/src/main/java/com/asata/org/oro`: identity, conversation, message, attachment
   (storage, scan, purge), live, outbox, config (security, web, rate limits, metrics, production) and context (the
   database session).
-- 153 integration tests in 32 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- 156 integration tests in 33 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
 - Umoja already uses Oro: its frontend has a Messages page, and its backend sends its organizations and teams to Oro
@@ -82,7 +84,7 @@ Caddy in production ([Deployment](deployment.md)).
 - An account system for Oro, to issue the tokens of its users, and blocking and reporting between Oro users.
 - Deleting an account with its messages and files.
 - A privacy notice (the retention of deleted content is written: [Retention](retention.md)).
-- A replay of failed events, a tested catch-up after a reconnection, and runbooks.
+- Runbooks.
 - An alert receiver, the off-server backup buckets, and restore drills on a schedule.
 - Object storage for the files (not needed while they stay on a backed-up volume of one server).
 - Push notifications.

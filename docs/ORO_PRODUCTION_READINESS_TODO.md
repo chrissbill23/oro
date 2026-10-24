@@ -546,7 +546,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: restart during a load test; events counted on both sides
 
-- [ ] `ORO-LCH-013` — P1 — Handle failed outbox events
+- [x] `ORO-LCH-013` — P1 — Handle failed outbox events
+  - Done (2026-10-24): the alert `OroOutboxFailed` (2026-10-23); `ops/outbox-replay.sh` lists the failed events and puts them back to pending, all or by id (ids checked, nothing else reaches the SQL); an event older than `oro.live.event-ttl` (2 minutes) is not sent, its recipients' streams reconnect instead (`oro_live_events_stale_total`); `failed` stays the dead letter. Tested: `OutboxTest` (the script), `MessagingFeaturesTest` (a stale event); on the local stack, an event 10 minutes old made a stream reconnect.
   - Current state: Partially implemented (retries, backoff, `failed` after 10 attempts, leases)
   - Evidence: `OutboxWorker.fail`, `backend/README.md` (Replay); the only handler is `LiveOutboxEventHandler`, whose
     events are worthless after a few minutes.
@@ -558,7 +559,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Blocker
   - Verification: `OutboxTest` with a failing handler and a moved clock
 
-- [ ] `ORO-LCH-014` — P1 — Stream reconnection and missed events
+- [x] `ORO-LCH-014` — P1 — Stream reconnection and missed events
+  - Done (2026-10-24): the contract is written (backend README, Catching up): on every `hello`, the list, the messages after the last seq of the open conversation and its newest page, the conversation; no event ids, no replay. Umoja's chat panel did not catch up on `hello` (only its list did): it does now (`ChatPanel.resync`, two tests). Tested: `CatchUpTest` over HTTP (a stream cut, two messages sent, the stream back: the unread count and `?after=` give them). Left: what changed during a gap and is older than the newest page shows on the next load.
   - Current state: Partially implemented (heartbeat every 25 s; Umoja's client reconnects, refreshes its token and
     reloads the list: `umoja/frontend/src/app/features/messages/messaging.store.ts`)
   - Evidence: `LiveHub` sends no event id; there is no `Last-Event-ID` support; the catch-up contract is implicit.

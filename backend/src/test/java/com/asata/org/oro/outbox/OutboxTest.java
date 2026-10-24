@@ -122,4 +122,46 @@ class OutboxTest extends PostgresIntegrationTest {
         assertThat(outboxWorker.purgeProcessed()).isEqualTo(1);
         assertThat(count("SELECT count(*) FROM oro_outbox_event")).isEqualTo(2);
     }
+
+    /** ops/outbox-replay.sh: the failed events listed, then back to pending, all or by id; nothing else touched */
+    @Test
+    void theReplayScriptPutsFailedEventsBackToPending() throws Exception {
+        admin.update("DELETE FROM oro_outbox_event");
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID done = UUID.randomUUID();
+        for (UUID id : List.of(first, second, done)) {
+            admin.update("""
+                    INSERT INTO oro_outbox_event(id, product_id, event_type, aggregate_type, aggregate_id, payload, status,
+                                                 attempt_count, last_error_code, processed_at)
+                    VALUES (?, 'ORO', 'message.created', 'message', gen_random_uuid(), '{}', ?, 10, ?, ?)""",
+                    id, id == done ? "processed" : "failed", id == done ? null : "IllegalStateException",
+                    id == done ? java.sql.Timestamp.from(java.time.Instant.now()) : null);
+        }
+
+        var list = replay("list");
+        assertThat(list.getExitCode()).as(list.getStderr()).isZero();
+        assertThat(list.getStdout()).contains(first.toString(), second.toString(), "IllegalStateException").doesNotContain(done.toString());
+
+        var one = replay(first.toString());
+        assertThat(one.getExitCode()).as(one.getStderr()).isZero();
+        assertThat(one.getStdout()).contains("1 failed events back to pending");
+        assertThat(event(first)).containsEntry("status", "pending").containsEntry("attempt_count", 0)
+                .containsEntry("last_error_code", null);
+        assertThat(event(second)).containsEntry("status", "failed");
+
+        // anything but an id never reaches the SQL
+        var injected = replay("'; DELETE FROM oro_outbox_event; --");
+        assertThat(injected.getExitCode()).isEqualTo(2);
+        assertThat(admin.queryForObject("SELECT count(*) FROM oro_outbox_event", Integer.class)).isEqualTo(3);
+
+        assertThat(replay("all").getStdout()).contains("1 failed events back to pending");
+        assertThat(event(second)).containsEntry("status", "pending");
+        assertThat(event(done)).containsEntry("status", "processed");
+    }
+
+    private static org.testcontainers.containers.Container.ExecResult replay(String argument) throws Exception {
+        return POSTGRES.execInContainer("sh", "-c", "PSQL='psql -U " + POSTGRES.getUsername() + " -d "
+                + POSTGRES.getDatabaseName() + "' sh /scripts/ops/outbox-replay.sh \"$1\"", "replay", argument);
+    }
 }

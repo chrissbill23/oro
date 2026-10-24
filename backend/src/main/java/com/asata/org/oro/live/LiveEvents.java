@@ -39,9 +39,29 @@ public class LiveEvents {
 
     /** the event to the active members of a conversation and to the identities in extra (one who just left it) */
     public void toConversation(UUID conversationId, Map<String, ?> event, Collection<UUID> extra) {
-        record Target(Product product, UUID organizationId, List<UUID> members) {
+        Target target = target(conversationId, extra);
+        if (target != null) {
+            hub.send(target.recipients(), target.product(), target.organizationId(), event);
         }
-        Target target = session.systemTransaction().execute(status -> {
+    }
+
+    /**
+     * instead of an event too old to be worth sending: the streams of its recipients told to reconnect, so that their
+     * clients read again what changed (what a client does on every connection); the number of streams
+     */
+    public int reconnectConversation(UUID conversationId, Collection<UUID> extra) {
+        Target target = target(conversationId, extra);
+        return target == null ? 0 : hub.reconnect(target.recipients(), target.product(), target.organizationId());
+    }
+
+    private record Target(Product product, UUID organizationId, Set<UUID> recipients) {
+    }
+
+    /** who hears of a change of the conversation: its active members and extra; null when it is gone */
+    private Target target(UUID conversationId, Collection<UUID> extra) {
+        record Found(Product product, UUID organizationId, List<UUID> members) {
+        }
+        Found found = session.systemTransaction().execute(status -> {
             session.enterSystem();
             List<Map<String, Object>> rows = session.jdbc().queryForList(
                     "SELECT product_id, organization_id FROM oro_conversation WHERE id = ?", conversationId);
@@ -51,14 +71,14 @@ public class LiveEvents {
             List<UUID> members = session.jdbc().queryForList(
                     "SELECT user_id FROM oro_conversation_member WHERE conversation_id = ? AND left_at IS NULL",
                     UUID.class, conversationId);
-            return new Target(Product.of((String) rows.getFirst().get("product_id")),
+            return new Found(Product.of((String) rows.getFirst().get("product_id")),
                     (UUID) rows.getFirst().get("organization_id"), members);
         });
-        if (target == null) {
-            return;
+        if (found == null) {
+            return null;
         }
-        Set<UUID> recipients = new HashSet<>(target.members());
+        Set<UUID> recipients = new HashSet<>(found.members());
         recipients.addAll(extra);
-        hub.send(recipients, target.product(), target.organizationId(), event);
+        return new Target(found.product(), found.organizationId(), recipients);
     }
 }

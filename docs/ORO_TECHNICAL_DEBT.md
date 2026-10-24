@@ -125,11 +125,14 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 
 ### The outbox only feeds the streams
 
-- **Today**: the only handler is `LiveOutboxEventHandler`; events retry for up to an hour.
+- **Today**: the only handler is `LiveOutboxEventHandler`; events retry for up to an hour. Since 2026-10-24 an event
+  older than 2 minutes is not sent: its recipients reconnect and read again instead. A `failed` event raises
+  `OroOutboxFailed`, and `ops/outbox-replay.sh` puts it back once fixed.
 - **Why**: the outbox was built ahead for push and other consumers.
-- **Risk**: live events retried after minutes are useless. A `failed` event raises the alert `OroOutboxFailed`
-  (since 2026-10-23), but there is no replay script yet.
-- **Revisit**: now for a time-to-live and the replay (`ORO-LCH-013`); with push for deduplication (`ORO-SCL-010`).
+- **Risk**: the time-to-live belongs to the live handler; a second consumer (push) needs its own, and must not lose
+  its events to it. A long outage of the outbox reconnects every stream once.
+- **Revisit**: with push (`ORO-FEA-001`): a handler per consumer, its own time-to-live, deduplication
+  (`ORO-SCL-010`).
 
 ### Quotas can be passed by one file
 

@@ -281,6 +281,21 @@ class MessagingFeaturesTest extends PostgresIntegrationTest {
                 argThat(event -> "member.removed".equals(event.get("change"))));
     }
 
+    /** an event that waited (the outbox late, a retry, a replay): not sent, its recipients reconnect and read again */
+    @Test
+    void aStaleOutboxEventMakesItsRecipientsReconnect() {
+        Conversation group = conversations.createGroup(jordanActor, "Design", null, List.of(amara));
+        UUID message = say(jordanActor, group.getId(), "Hello").message().getId();
+        org.mockito.Mockito.clearInvocations(hub);
+
+        liveHandler.handle(new ClaimedEvent(UUID.randomUUID(), Product.UMOJA, "message.created", "message", message,
+                "{\"conversationId\":\"%s\",\"messageId\":\"%s\",\"seq\":1}".formatted(group.getId(), message), 4,
+                java.time.Instant.now().minus(java.time.Duration.ofMinutes(10))));
+
+        verify(hub).reconnect(argThat(ids -> ids.containsAll(List.of(jordan, amara))), eq(Product.UMOJA), eq(ACME));
+        verify(hub, org.mockito.Mockito.never()).send(org.mockito.ArgumentMatchers.<java.util.Collection<UUID>>any(), any(), any(), any());
+    }
+
     @Test
     void typingIsForTheOtherMembersOnly() {
         Conversation direct = conversations.openDirect(jordanActor, amara);

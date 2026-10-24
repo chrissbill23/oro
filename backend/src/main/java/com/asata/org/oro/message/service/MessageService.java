@@ -304,5 +304,9 @@ public class MessageService {
         if (request.type() == MessageType.TEXT && (request.body() == null || request.body().isBlank())) {
             throw new IllegalArgumentException("A text message has a body");
         }
+        // a caption of spaces only: refused here (400), not by the check constraint of the database (409)
+        if (request.body() != null && request.body().isBlank()) {
+            throw new IllegalArgumentException("A body is not blank: none, or some text");
+        }
     }
 }

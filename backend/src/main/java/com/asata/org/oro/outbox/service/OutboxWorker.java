@@ -81,10 +81,11 @@ public class OutboxWorker {
                            next_attempt_at = now() + make_interval(secs => ?)
                     FROM due WHERE e.id = due.id
                     RETURNING e.id, e.product_id, e.event_type, e.aggregate_type, e.aggregate_id, e.payload::text AS payload,
-                              e.attempt_count""",
+                              e.attempt_count, e.created_at""",
                     (rs, i) -> new ClaimedEvent(rs.getObject("id", UUID.class), Product.of(rs.getString("product_id")),
                             rs.getString("event_type"), rs.getString("aggregate_type"),
-                            rs.getObject("aggregate_id", UUID.class), rs.getString("payload"), rs.getInt("attempt_count")),
+                            rs.getObject("aggregate_id", UUID.class), rs.getString("payload"), rs.getInt("attempt_count"),
+                            rs.getTimestamp("created_at").toInstant()),
                     batchSize, workerId, (double) properties.getLease().toMillis() / 1000);
         });
     }

@@ -216,6 +216,9 @@ class ApiTest extends PostgresIntegrationTest {
                 .andExpect(status().isBadRequest());
         call(post("/conversations/" + group + "/messages"), amani, null, "{\"clientMessageId\":\"client-0004\",\"type\":\"TEXT\",\"body\":\"x\",\"metadata\":[1]}")
                 .andExpect(status().isBadRequest());
+        // a file whose caption is spaces only
+        call(post("/conversations/" + group + "/messages"), amani, null, "{\"clientMessageId\":\"client-0005\",\"type\":\"FILE\",\"body\":\"   \"}")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("A body is not blank")));
         call(get("/conversations/not-a-uuid"), amani, null, null).andExpect(status().isBadRequest());
     }
 

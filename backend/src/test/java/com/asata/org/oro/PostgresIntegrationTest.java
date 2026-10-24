@@ -66,7 +66,9 @@ public abstract class PostgresIntegrationTest {
             .withCopyFileToContainer(MountableFile.forHostPath(DATABASE_DIR.resolve("oro/INSERT.sql")),
                     "/scripts/oro/INSERT.sql")
             .withCopyFileToContainer(MountableFile.forHostPath(DATABASE_DIR.resolve("oro/migrate.sh")),
-                    "/scripts/oro/migrate.sh");
+                    "/scripts/oro/migrate.sh")
+            .withCopyFileToContainer(MountableFile.forHostPath(Path.of("ops/outbox-replay.sh").toAbsolutePath()),
+                    "/scripts/ops/outbox-replay.sh");
 
     protected static final JdbcTemplate admin;
 

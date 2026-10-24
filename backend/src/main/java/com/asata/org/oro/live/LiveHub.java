@@ -200,6 +200,24 @@ public class LiveHub implements SmartLifecycle {
         }
     }
 
+    /**
+     * the streams of these identities in the scope told to reconnect and closed: their clients read again what changed;
+     * the number of streams
+     */
+    public int reconnect(Collection<UUID> identityIds, Product product, UUID organizationId) {
+        Scope scope = new Scope(product, organizationId);
+        int closed = 0;
+        for (UUID identityId : new HashSet<>(identityIds)) {
+            for (Connection connection : connections.getOrDefault(identityId, Set.of())) {
+                if (connection.scope().equals(scope)) {
+                    close(connection, true);
+                    closed++;
+                }
+            }
+        }
+        return closed;
+    }
+
     /** the streams open on this instance */
     public int openStreams() {
         return open.get();

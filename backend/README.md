@@ -110,7 +110,8 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `ConversationAccessTest` | Non-members and other organizations read nothing, through the services and through raw SQL; leaving, removal, revoked access and deactivation end access; members cannot rejoin on their own; the admin's choice of history is applied; concurrent creation of the same direct conversation gives one; one direct conversation per pair and organization; unread counts; the roles hold in the database (raw SQL as a plain member or an admin); system messages tell only what happened, as who did it |
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction; the API's login never takes `oro_system`, and each context only on its own login; slow statements and long lock waits end |
-| `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention |
+| `CatchUpTest` | Over HTTP: a stream cut, two messages sent meanwhile, the stream back; the list and `?after=` give what was missed |
+| `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention; `ops/outbox-replay.sh` (list, by id, all; anything but an id refused) |
 | `ApiTest` | The HTTP chain with tokens really signed by each product (RS256, `TestTokens`): another key (even under a published `kid`), the audience, HS256 with the former shared secret, unsigned tokens, unknown issuer, expiry, no expiry, a subject that is not an account id, not-before, clock skew; no API description by default; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
 | `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; a late snapshot never brings back a revoked access, and concurrent synchronizations end as the newest; the list (last message, the other one, unread); mute; rename; reactions (one emoji, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
 | `MessagingApiTest` | The same over HTTP: the synchronization by the Umoja integration only; list, reactions, search, mute, read positions, typing; a file uploaded (its name cleaned, its size limited), sent, then downloaded by the members only with safe headers |
@@ -274,7 +275,7 @@ ids and numbers only; the client reads what changed through the API:
 | `conversation {change; conversationId}` | Created, renamed, a member added or gone (the one who left hears it too) |
 | `typing {conversationId, userId}` | At once, for the other members; lasts a few seconds |
 | `read {conversationId, userId, seq}` | At once, for the members ("Seen") |
-| `reconnect` | The token of the stream expired: open a new stream with a new token |
+| `reconnect` | Open a new stream: the token expired (with a new token), Oro is stopping, or an event was too old to send |
 
 A stream is as good as a new request (`LiveAuthorization`): it is closed with the commit that suspends or deactivates
 its identity or revokes its organization access, and a check every 30 s closes any stream whose identity is no longer
@@ -282,6 +283,23 @@ active or whose access is no longer current, whatever changed them. Its user is 
 
 The streams and the presence live in the memory of the instance (`LiveHub`): several instances need a shared bus
 (PostgreSQL `LISTEN/NOTIFY`, Redis) for the events and the presence.
+
+### Catching up
+
+The stream says what changed; it never replays what a client missed. A stream ends often (its token, a restart of
+Oro, a network that drops, a client 500 events behind, an event too old to send), and the events of the gap are lost
+to it. So a client, on **every** `hello` (the first one too):
+
+1. reads the list again (`GET /conversations`): unread counts and last messages of every conversation;
+2. for the conversation open on its screen, reads what came after the last message it has
+   (`GET /conversations/{id}/messages?after=<its last seq>`), and the newest page again (`GET
+   /conversations/{id}/messages`), for what was edited, deleted or reacted to meanwhile;
+3. reads that conversation again (`GET /conversations/{id}`): its members and their read positions.
+
+Until a stream is open, the client reads the list every so often instead. Between two `hello`, the events are
+enough. A client that follows this misses nothing, without ids of events or a replay: `CatchUpTest` checks it over
+HTTP (a stream cut, two messages sent, the stream back), and Umoja's client does it (`MessagingStore`, `ChatPanel`).
+What is older than the newest page and changed during a gap shows on the next load of the conversation.
 
 ## Schema
 
@@ -647,6 +665,7 @@ What Oro measures, besides the requests by route and status (`http_server_reques
 | `oro_conversation_lock_seconds` | The wait for the row of a conversation (sends take turns) |
 | `oro_streams_open` | The streams open on the instance |
 | `oro_streams_ended_slow_total` | The streams ended because their client read too slowly (500 events behind) |
+| `oro_live_events_stale_total` | The outbox events too old to send (the outbox late, a retry, a replay): their recipients reconnected instead |
 | `oro_outbox_pending`, `oro_outbox_failed`, `oro_outbox_oldest_pending_seconds` | The outbox: waiting, failed for good, the lag of the live events |
 | `oro_attachments_scan_pending`, `oro_attachments_scan_oldest_pending_seconds` | The files waiting for their malware scan |
 | `oro_attachments_scanned_total{result}` | The scans: clean, infected, failed |
@@ -712,9 +731,12 @@ whenever someone who knew a key leaves.
 
 - **Monitoring**: alert on any `failed` outbox event, and on the age of the oldest `pending` event (the outbox lag).
   Watch lock waits on `oro_conversation` (sends contending in one conversation).
-- **Replay**: after a fix, put a failed event back with
-  `UPDATE oro_outbox_event SET status = 'pending', next_attempt_at = now(), attempt_count = 0 WHERE id = …`, as
-  `oro_system`.
+- **Replay**: after the cause of `OroOutboxFailed` is fixed, `ops/outbox-replay.sh list` shows the failed events, and
+  `ops/outbox-replay.sh <id>…` (or `all`) puts them back to pending; it runs `psql` in the database's container
+  (`PSQL` to reach it another way). A replayed live event is old: its recipients reconnect instead.
+- **Stale live events**: an event older than `oro.live.event-ttl` (2 minutes) is not sent; the streams of its
+  recipients are told to reconnect, and their clients read again what changed (`oro_live_events_stale_total`, a line
+  in the log).
 - **Purges**: processed outbox events, and the files Oro no longer keeps (see [Attachments](#attachments)), are
   automatic. A file that will not delete is logged and retried at the next purge.
 - **Reconciliation**: the Umoja integration sends each organization as it is (`PUT /internal/organizations/{id}`) after
