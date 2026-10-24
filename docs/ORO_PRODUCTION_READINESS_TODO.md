@@ -315,7 +315,8 @@ together unless split. Companion documents: [launch checklist](ORO_LAUNCH_CHECKL
   - Launch impact: Blocker for the Oro launch; not needed for Umoja
   - Verification: tests in `ConversationAccessTest` and over HTTP
 
-- [ ] `ORO-SEC-014` — P0 — Define and enforce how long deleted content survives
+- [x] `ORO-SEC-014` — P0 — Define and enforce how long deleted content survives
+  - Done (2026-10-24): the policy is `docs/retention.md`: gone from Oro at once (the files within 15 minutes), from every backup after 21 days at most. Three weekly full database backups kept (`PGBACKREST_RETENTION_FULL=3`, was 2), the file snapshots a day for 21 days (`--keep-within-daily 21d`, was 14 daily); after a point-in-time restore, what was deleted since is deleted again. Tested: the purge (`AttachmentPurgeTest`); the settings checked on the local stack. Left: the privacy notice states it (`ORO-LCH-018`).
   - Current state: Partially implemented (the row is erased: `body` NULL, `metadata` `{}`, constraint)
   - Evidence: `MessageService.delete`; the attachments of a deleted message keep their file on disk
     (`theAttachmentsOfADeletedMessageAreHiddenAndMarkedToPurge`: marked, never purged); old row versions stay in the

@@ -34,6 +34,7 @@ development data, and `oro/DROP.sql`).
 
 - [Quick start](docs/quick-start.md): run the database and Oro on Docker.
 - [Connecting Umoja](docs/connecting-umoja.md): how Umoja's frontend and backend use Oro.
+- [Retention](docs/retention.md): how long deleted messages and files survive, backups included (21 days at most).
 - [Deployment](docs/deployment.md): production on a server with Docker Compose: secrets, HTTPS, upgrades, rollbacks.
 - [Implementation summary](docs/implementation-summary.md): what is built, how it is secured, what is left.
 - [Backend](backend/README.md): API, authentication, schema, security, operations.

@@ -740,6 +740,8 @@ whenever someone who knew a key leaves.
    ```
 3. The files newer than the database (sent after the moment chosen) have no row: the daily purge of the files without
    an attachment removes them.
+4. What was deleted after the moment chosen is back: delete it again ([Retention](../docs/retention.md), Restoring a
+   backup).
 
 ## Limitations
 

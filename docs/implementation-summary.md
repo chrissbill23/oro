@@ -81,7 +81,7 @@ Caddy in production ([Deployment](deployment.md)).
 
 - An account system for Oro, to issue the tokens of its users, and blocking and reporting between Oro users.
 - Deleting an account with its messages and files.
-- A written retention policy and privacy notice.
+- A privacy notice (the retention of deleted content is written: [Retention](retention.md)).
 - A replay of failed events, a tested catch-up after a reconnection, and runbooks.
 - An alert receiver, the off-server backup buckets, and restore drills on a schedule.
 - Object storage for the files (not needed while they stay on a backed-up volume of one server).
