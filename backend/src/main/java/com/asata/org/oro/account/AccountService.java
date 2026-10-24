@@ -341,6 +341,43 @@ public class AccountService {
         return v;
     }
 
+    /**
+     * the password of the account checked before an irreversible act (its erasure): a wrong one counts, as at the
+     * sign-in, and the account locks the same way
+     */
+    public void confirmPassword(UUID userId, String password) {
+        committed(jdbc -> {
+            OffsetDateTime now = now();
+            List<Account> found = jdbc.query("""
+                            SELECT u.id, u.username, u.is_active AND u.deleted_at IS NULL AS active, c.password_hash,
+                                   c.failed_attempts, c.locked_until, c.must_change_password, u.email_verified
+                            FROM asata_user u JOIN asata_user_credential c ON c.user_id = u.id WHERE u.id = ? FOR UPDATE OF c""",
+                    (rs, i) -> new Account(rs.getObject("id", UUID.class), rs.getString("username"), rs.getBoolean("active"),
+                            rs.getString("password_hash"), rs.getInt("failed_attempts"),
+                            rs.getObject("locked_until", OffsetDateTime.class), rs.getBoolean("must_change_password"),
+                            rs.getBoolean("email_verified")),
+                    userId);
+            if (found.isEmpty() || password == null) {
+                throw new Unauthorized("Wrong password");
+            }
+            Account account = found.getFirst();
+            if (account.lockedUntil() != null && account.lockedUntil().isAfter(now)) {
+                throw new Unauthorized("Account temporarily locked, try again later");
+            }
+            if (!passwordEncoder.matches(password, account.passwordHash())) {
+                failedAttempt(jdbc, account, now);
+                throw new Unauthorized("Wrong password");
+            }
+            jdbc.update("UPDATE asata_user_credential SET failed_attempts = 0 WHERE user_id = ?", userId);
+            return true;
+        });
+    }
+
+    /** every session of Oro of the account closed (its Umoja and Mokili ones stay) */
+    public int closeOroSessions(UUID userId) {
+        return db.inTransaction(jdbc -> sessions.closeAll(jdbc, userId));
+    }
+
     public void logout(String refreshToken) {
         if (refreshToken != null && !refreshToken.isBlank()) {
             db.inTransaction(jdbc -> {

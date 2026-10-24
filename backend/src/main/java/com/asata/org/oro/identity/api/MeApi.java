@@ -13,4 +13,15 @@ public interface MeApi {
     @Operation(summary = "The caller", description = "Its messaging identity, product and organization (Umoja)")
     @GetMapping("/me")
     MeDTO me(@Parameter(hidden = true) Actor actor);
+
+    record EraseRequest(@jakarta.validation.constraints.NotNull String password) {
+    }
+
+    @Operation(summary = "Erase my data in Oro", description = "Oro's people only, with their password: their messages "
+            + "become deletions, their reactions and files go, they leave every conversation and are signed out of Oro. "
+            + "Their Asata account stays (Umoja, Mokili). Umoja's people ask their organization")
+    @org.springframework.web.bind.annotation.PostMapping("/me/erase")
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
+    void erase(@Parameter(hidden = true) Actor actor,
+               @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody EraseRequest request);
 }

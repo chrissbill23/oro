@@ -115,6 +115,7 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction; the API's login never takes `oro_system`, and each context only on its own login; slow statements and long lock waits end |
 | `CatchUpTest` | Over HTTP: a stream cut, two messages sent meanwhile, the stream back; the list and `?after=` give what was missed |
+| `ErasureTest` | An erasure by Umoja and by the person: its messages deletions, its reactions and uploads gone, the mentions and system messages anonymous and not marked edited, nothing names it; idempotent; the person comes back as someone new; the flag of the erasure hides no user's edit |
 | `PasswordResetTest` | A reset by link ends every session (Umoja's too), unlocks and verifies; the same answer for an unknown address; a verification link resets nothing; the limits per address and per recipient |
 | `SignUpTest` | Sign-up, the address verified before sign-in, the same answer and a notice for a known address, a taken username, the links single use and for their address only, a new link only when awaited |
 | `AccountTest` | Sign-in by email or username, the token on the API, one answer for every failure, the lock after 5 wrong passwords, rotation and a stolen session, sign-out, Umoja's tokens refused, the logins apart |
@@ -181,6 +182,7 @@ carries an `x-request-id` header.
 | `GET /actuator/health/liveness`, `/readiness` | On the management port (9082) only, never published: the health check of the container |
 | `GET /doc`, `GET /doc/api` | Swagger UI, OpenAPI (only with `ORO_API_DOCS=true`) |
 | `GET /me` | The caller: identity, product, user ID, organization |
+| `POST /me/erase` `{password}` | Oro's people: their data in Oro erased ([Retention](../docs/retention.md), Erasing a person), they are signed out of Oro; 403 for Umoja's people (their organization asks) |
 | `GET /conversations` | The caller's active conversations in its context, latest first, with unread counts |
 | `POST /conversations/direct` `{userId}` | The direct conversation with a user (created the first time; concurrent calls give one) |
 | `POST /conversations/groups` `{name, description, memberUserIds}` | A group, with the caller as owner |
@@ -727,6 +729,7 @@ What Oro measures, besides the requests by route and status (`http_server_reques
 | `oro_conversation_lock_seconds` | The wait for the row of a conversation (sends take turns) |
 | `oro_streams_open` | The streams open on the instance |
 | `oro_streams_ended_slow_total` | The streams ended because their client read too slowly (500 events behind) |
+| `oro_erasures_pending`, `oro_erasures_oldest_pending_seconds` | The erasures of people asked and not done (alert `OroErasureStuck` past an hour) |
 | `oro_live_events_stale_total` | The outbox events too old to send (the outbox late, a retry, a replay): their recipients reconnected instead |
 | `oro_outbox_pending`, `oro_outbox_failed`, `oro_outbox_oldest_pending_seconds` | The outbox: waiting, failed for good, the lag of the live events |
 | `oro_attachments_scan_pending`, `oro_attachments_scan_oldest_pending_seconds` | The files waiting for their malware scan |

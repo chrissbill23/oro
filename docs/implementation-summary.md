@@ -84,7 +84,6 @@ Caddy in production ([Deployment](deployment.md)).
 
 - Phone accounts for Oro (email accounts work: sign-up, verification, sign-in, recovery), and
   blocking and reporting between Oro users.
-- Deleting an account with its messages and files.
 - A privacy notice (the retention of deleted content is written: [Retention](retention.md)).
 - Who is on call, and the runbooks rehearsed on a staging server ([Runbooks](runbooks.md)).
 - An alert receiver, the off-server backup buckets, and restore drills on a schedule.

@@ -41,6 +41,13 @@ public interface IntegrationApi {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void deactivate(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId);
 
+    @Operation(summary = "Erase the data of an identity", description = "Its messages become deletions, its reactions "
+            + "and files go, nothing that stays links to the person; deactivated at once, erased within a minute. 202, "
+            + "whether Oro had something of it or not")
+    @PostMapping("/identities/{userId}/erase")
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
+    void erase(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId);
+
     @Operation(summary = "Synchronize an organization (Umoja)",
             description = "Its members (the others lose their access and leave its conversations) and the chats of its teams "
                     + "(their names and members); idempotent, sent on every change and periodically. One at a time per "

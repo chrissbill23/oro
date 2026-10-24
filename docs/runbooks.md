@@ -95,6 +95,16 @@ An event failed 10 times: a bug, or a dependency that keeps failing.
 2. Find the cause in the logs around `failed` (`dc logs oro | grep '<event id>'`), fix it.
 3. `backend/ops/outbox-replay.sh <id>…` or `all`. Live events replayed late make their recipients reconnect.
 
+### OroErasureStuck (warning)
+
+A person's data waits more than an hour for its erasure (asked by the person, or by Umoja).
+
+1. `dc logs --since 2h oro | grep -i erasure`: the worker runs every 30 s (`ErasureScheduler`); an error stops it.
+2. `SELECT identity_id, requested_at, messages_erased FROM oro_erasure WHERE completed_at IS NULL;` (in
+   `asata-postgres-1`): `messages_erased` that grows is a large erasure on its way (1,000 messages a step).
+3. Nothing grows: the database (locks, the statement timeout of the worker); fix, then the worker resumes where it
+   stopped (each step is its own transaction). The identity is deactivated meanwhile: nobody reads its messages.
+
 ### OroScansWaiting (warning)
 
 Files wait more than 10 minutes for their scan: they cannot be downloaded.

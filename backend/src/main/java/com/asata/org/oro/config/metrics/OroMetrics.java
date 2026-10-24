@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * failed for good, the age of the oldest waiting (the lag of the live events)</li>
  * <li>oro_attachments_scan_pending, oro_attachments_scan_oldest_pending_seconds: the files waiting for their scan</li>
  * <li>oro_wal_archive_age_seconds, oro_wal_archive_failed: the point-in-time recovery (pg_stat_archiver)</li>
+ * <li>oro_erasures_pending, oro_erasures_oldest_pending_seconds: the erasures of people asked and not done</li>
  * <li>oro_streams_open, oro_attachments_disk_free_bytes, oro_files_backup_age_seconds: read when scraped</li>
  * </ul>
  * NaN when not known (yet).
@@ -43,7 +44,7 @@ public class OroMetrics {
         this.filesBackupStatus = filesBackupStatus;
         for (String name : new String[]{"outbox.pending", "outbox.failed", "outbox.oldest.pending.seconds",
                 "attachments.scan.pending", "attachments.scan.oldest.pending.seconds", "wal.archive.age.seconds",
-                "wal.archive.failed"}) {
+                "wal.archive.failed", "erasures.pending", "erasures.oldest.pending.seconds"}) {
             Gauge.builder("oro." + name, database, values -> values.get().getOrDefault(name, Double.NaN)).register(registry);
         }
         Gauge.builder("oro.streams.open", hub, LiveHub::openStreams).description("streams open on this instance").register(registry);
@@ -70,6 +71,9 @@ public class OroMetrics {
                 Map<String, Object> scans = session.jdbc().queryForMap("""
                         SELECT count(*) AS pending, coalesce(extract(epoch FROM now() - min(created_at)), 0) AS oldest
                         FROM oro_attachment WHERE upload_status = 'uploaded' AND scan_status = 'pending' AND deleted_at IS NULL""");
+                Map<String, Object> erasures = session.jdbc().queryForMap("""
+                        SELECT count(*) AS pending, coalesce(extract(epoch FROM now() - min(requested_at)), 0) AS oldest
+                        FROM oro_erasure WHERE completed_at IS NULL""");
                 Map<String, Object> archiver = session.jdbc().queryForMap("""
                         SELECT extract(epoch FROM now() - last_archived_time) AS age, failed_count AS failed,
                                last_failed_time > coalesce(last_archived_time, '-infinity') AS failing
@@ -80,6 +84,8 @@ public class OroMetrics {
                         "outbox.oldest.pending.seconds", number(outbox.get("oldest")),
                         "attachments.scan.pending", number(scans.get("pending")),
                         "attachments.scan.oldest.pending.seconds", number(scans.get("oldest")),
+                        "erasures.pending", number(erasures.get("pending")),
+                        "erasures.oldest.pending.seconds", number(erasures.get("oldest")),
                         "wal.archive.age.seconds", number(archiver.get("age")),
                         // failing now: the last attempt failed after the last success
                         "wal.archive.failed", Boolean.TRUE.equals(archiver.get("failing")) ? 1.0 : 0.0);

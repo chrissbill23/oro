@@ -401,7 +401,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Dependencies: `ORO-LCH-001`; a decision on the SMS provider
   - Launch impact: Blocker for the Oro launch if phone sign-up is promised
 
-- [ ] `ORO-LCH-002` — P1 — Delete an account and its data
+- [x] `ORO-LCH-002` — P1 — Delete an account and its data
+  - Done (2026-10-24): decided: Oro erases Oro's data only (the Asata account stays), the messages become deletions. Asked by the person with its password (`POST /me/erase`, Oro's people) or by Umoja (`POST /internal/identities/{userId}/erase`); the identity deactivated at once, then `oro_erase_identity` a batch at a time (`ErasureScheduler`): messages deleted, reactions and uploads gone, mentions and system messages anonymous (not marked edited: a flag only the logins of oro_system can use), the external id `erased-<id>`. Idempotent; `oro_erasures_pending`, the alert `OroErasureStuck`. Tested: `ErasureTest` (4); on the local stack. The policy: `docs/retention.md`, Erasing a person.
   - Current state: Partially implemented (deactivation ends memberships: `IdentityService.deactivate`)
   - Evidence: `oro_messaging_identity_deactivated()` in `CREATE_ORO_TABLES.sql`; no erasure of messages or files.
   - Action: decide what deletion means (messages erased like a deletion, or kept anonymized in groups), implement it

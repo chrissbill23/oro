@@ -25,6 +25,9 @@ oro:
     # the tests run the purge by hand
     purge:
       enabled: false
+  # the tests run the erasures by hand
+  erasure:
+    enabled: false
   outbox:
     # the tests run the worker by hand
     enabled: false

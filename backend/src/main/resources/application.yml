@@ -208,6 +208,12 @@ oro:
       link: { per-minute: 10, burst: 10 }
       # the emails to one recipient, whoever asks: 3 at once, then one a minute
       email-to: { per-minute: 1, burst: 3 }
+      # a person erasing its data (its password checked)
+      erase: { per-minute: 3, burst: 3 }
+  # the erasures asked (a person's data, ErasureService): carried out every interval, a batch at a time
+  erasure:
+    enabled: ${ORO_ERASURE_ENABLED:true}
+    interval: PT30S
   outbox:
     enabled: ${ORO_OUTBOX_ENABLED:true}
     poll-interval: PT1S

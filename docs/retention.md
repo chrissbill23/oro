@@ -24,6 +24,22 @@ nothing expires while no new backup is made. The alerts `DatabaseBackupTooOld` a
 The same holds for what the purge removes by itself: uploads never attached to a message (after 24 hours), uploads
 never received (after an hour), files found infected.
 
+## Erasing a person
+
+A person's data in Oro goes at once and for good when they ask: an Oro person with its password (`POST /me/erase`),
+or Umoja for one of its people (`POST /internal/identities/{userId}/erase`; Umoja's people ask their organization).
+
+| What | What happens |
+|---|---|
+| Its identity | Deactivated at once: it leaves every conversation, its streams close, its token opens nothing |
+| Its messages | Deletions, within a minute (the erasure works a batch at a time): no text, no metadata, no reactions; their files purged |
+| Its reactions on the messages of others, its uploads never sent | Gone |
+| The system messages that name it ("X joined, added by Y") and the mentions of it in the messages of others | Name `erased-<id>` instead: the others' texts stay, never marked edited |
+| Its identity at the end | Its external id becomes `erased-<id>`: nothing that stays links to the person |
+| Its Asata account, its Umoja and Mokili data | Untouched: Oro erases Oro's data only. It may come back to Oro, as someone new |
+
+Then the backups hold it for 21 days at most, as any deletion.
+
 ## What Oro does not hold
 
 - **Logs** never hold the content of a message or a file, nor database rows (`LogPrivacyTest`); they hold ids.

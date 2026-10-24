@@ -76,6 +76,13 @@ groups:
         annotations:
           summary: "{{ $value }} outbox event(s) failed for good"
           description: "Look at last_error_code in oro_outbox_event, fix, then replay (backend README, Operations)."
+      - alert: OroErasureStuck
+        expr: oro_erasures_oldest_pending_seconds > 3600
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "A person's data waits more than an hour for its erasure"
+          description: "{{ with query \"oro_erasures_pending\" }}{{ . | first | value }}{{ end }} erasure(s) not done: the worker (ErasureScheduler), the database. See the runbooks."
       - alert: OroScansWaiting
         expr: oro_attachments_scan_oldest_pending_seconds > 600
         for: 5m

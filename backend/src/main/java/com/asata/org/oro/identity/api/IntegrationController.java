@@ -20,6 +20,7 @@ public class IntegrationController implements IntegrationApi {
     private final IdentityService identities;
     private final OrganizationAccessService organizationAccess;
     private final OrganizationSyncService organizationSync;
+    private final com.asata.org.oro.identity.service.ErasureService erasures;
 
     @Override
     public IdentityDTO provision(Product product, String userId) {
@@ -39,6 +40,11 @@ public class IntegrationController implements IntegrationApi {
     @Override
     public void deactivate(Product product, String userId) {
         identities.deactivate(existing(product, userId));
+    }
+
+    @Override
+    public void erase(Product product, String userId) {
+        erasures.request(product, userId, "integration");
     }
 
     @Override
