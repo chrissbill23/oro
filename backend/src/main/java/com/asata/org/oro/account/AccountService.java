@@ -35,6 +35,8 @@ public class AccountService {
     private final PasswordEncoder passwordEncoder;
     private final EmailTokens emailTokens;
     private final Mailer mailer;
+    private final com.asata.org.oro.config.ratelimit.RateLimiter limiter;
+    private final com.asata.org.oro.config.ratelimit.RateLimitProperties limits;
 
     static final String CHECK_YOUR_EMAIL = "Check your email to finish creating your account";
     static final String VERIFY_FIRST = "Verify your email address first: open the link we sent you, or ask for a new one";
@@ -230,7 +232,86 @@ public class AccountService {
                 """);
     }
 
+    /**
+     * A link to choose a new password, if the address is the one of an account that may sign in; the same answer
+     * always. An account without a password yet (signed in with a provider only) gets one this way.
+     */
+    public void forgotPassword(String email) {
+        String address = email == null ? "" : email.strip();
+        if (address.isEmpty() || address.length() > 255) {
+            return;
+        }
+        Outgoing mail = db.inTransaction(jdbc -> {
+            List<UUID> found = jdbc.queryForList("SELECT id FROM asata_user WHERE lower(email) = lower(?) AND is_active AND deleted_at IS NULL",
+                    UUID.class, address);
+            if (found.isEmpty()) {
+                return null;
+            }
+            String token = emailTokens.issue(jdbc, found.getFirst(), EmailTokens.RESET_PASSWORD, address, properties.getResetTtl());
+            log.info("a link to reset the password of account {} sent", found.getFirst());
+            return new Outgoing(address, "Choose a new password for Oro", """
+                    Someone, maybe you, asked to choose a new password for your Asata account.
+
+                    Open this link within %d minutes to choose it:
+
+                    %s
+
+                    It signs you out everywhere: Oro, Umoja, Mokili. If you did not ask, ignore this email: your
+                    password stays as it is.
+                    """.formatted(properties.getResetTtl().toMinutes(), properties.getLinkBase() + "/reset-password?token=" + token));
+        });
+        if (mail != null) {
+            send(mail);
+        }
+    }
+
+    /**
+     * The new password of the link's account: the account unlocked, its address verified (the link reached it), every
+     * session of the account closed, in every product; a notice to its address
+     */
+    public void resetPassword(String token, String password) {
+        if (password == null) {
+            throw new IllegalArgumentException("A new password");
+        }
+        String hash = passwordEncoder.encode(password);
+        Outgoing notice = db.inTransaction(jdbc -> {
+            EmailTokens.Consumed consumed = emailTokens.consume(jdbc, token, EmailTokens.RESET_PASSWORD)
+                    .orElseThrow(() -> new IllegalArgumentException("This link is not valid any more: ask for a new one"));
+            List<String[]> account = jdbc.query("SELECT email, username FROM asata_user WHERE id = ? AND is_active AND deleted_at IS NULL",
+                    (rs, i) -> new String[]{rs.getString("email"), rs.getString("username")}, consumed.userId());
+            if (account.isEmpty() || !account.getFirst()[0].equalsIgnoreCase(consumed.email())) {
+                throw new IllegalArgumentException("This link is not valid any more: ask for a new one");
+            }
+            requireGoodPassword(password, account.getFirst()[0], account.getFirst()[1]);
+            int updated = jdbc.update("""
+                    UPDATE asata_user_credential SET password_hash = ?, password_updated_at = now(), failed_attempts = 0,
+                           locked_until = NULL, must_change_password = false
+                    WHERE user_id = ?""", hash, consumed.userId());
+            if (updated == 0) {
+                jdbc.update("INSERT INTO asata_user_credential(user_id, password_hash) VALUES (?, ?)", consumed.userId(), hash);
+            }
+            jdbc.update("UPDATE asata_user SET email_verified = true WHERE id = ?", consumed.userId());
+            int sessions = jdbc.update("UPDATE asata_user_refresh_token SET revoked_at = now() WHERE user_id = ? AND revoked_at IS NULL",
+                    consumed.userId());
+            log.info("password of account {} reset: {} session token(s) revoked in every product", consumed.userId(), sessions);
+            return new Outgoing(consumed.email(), "Your password was changed", """
+                    The password of your Asata account was just changed, and every session of it was closed.
+
+                    If it was not you, choose a new password at once from the sign-in page ("Forgot your password"),
+                    and tell the support.
+                    """);
+        });
+        send(notice);
+    }
+
     private void send(Outgoing mail) {
+        // a mailbox flooded from many addresses: 3 emails at once to one recipient, then one a minute
+        com.asata.org.oro.config.ratelimit.RateLimitProperties.Limit perRecipient = limits.getLimits().get("email-to");
+        if (limits.isEnabled() && perRecipient != null
+                && limiter.acquire("to/" + mail.to().toLowerCase(java.util.Locale.ROOT), "email-to", perRecipient) > 0) {
+            log.info("an email of the accounts not sent: its recipient got too many lately");
+            return;
+        }
         try {
             mailer.send(mail.to(), mail.subject(), mail.text());
         } catch (RuntimeException e) {

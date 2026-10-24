@@ -199,6 +199,15 @@ oro:
       add-member: { per-minute: 30, burst: 20 }
       upload: { per-minute: 10, burst: 5 }
       stream: { per-minute: 10, burst: 5 }
+      # the public routes of the accounts, per client address (an office shares one: sign-in generous, the lock of an
+      # account after 5 wrong passwords stops the guessing of one account)
+      login: { per-minute: 30, burst: 30 }
+      refresh: { per-minute: 60, burst: 30 }
+      signup: { per-minute: 3, burst: 10 }
+      email: { per-minute: 3, burst: 5 }
+      link: { per-minute: 10, burst: 10 }
+      # the emails to one recipient, whoever asks: 3 at once, then one a minute
+      email-to: { per-minute: 1, burst: 3 }
   outbox:
     enabled: ${ORO_OUTBOX_ENABLED:true}
     poll-interval: PT1S

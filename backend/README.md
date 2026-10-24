@@ -115,6 +115,7 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction; the API's login never takes `oro_system`, and each context only on its own login; slow statements and long lock waits end |
 | `CatchUpTest` | Over HTTP: a stream cut, two messages sent meanwhile, the stream back; the list and `?after=` give what was missed |
+| `PasswordResetTest` | A reset by link ends every session (Umoja's too), unlocks and verifies; the same answer for an unknown address; a verification link resets nothing; the limits per address and per recipient |
 | `SignUpTest` | Sign-up, the address verified before sign-in, the same answer and a notice for a known address, a taken username, the links single use and for their address only, a new link only when awaited |
 | `AccountTest` | Sign-in by email or username, the token on the API, one answer for every failure, the lock after 5 wrong passwords, rotation and a stolen session, sign-out, Umoja's tokens refused, the logins apart |
 | `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention; `ops/outbox-replay.sh` (list, by id, all; anything but an id refused) |
@@ -223,6 +224,8 @@ wrong passwords). Oro signs their access tokens itself (`account/`):
 | `POST /auth/signup` `{email, username, password, givenName, surname}` | A new Asata account, its address to verify: 202, the same answer whether the address has an account (its owner then gets a notice); a taken username 409 |
 | `POST /auth/verify-email` `{token}` | The token of the link sent by email: the address verified (204), once, within 24 h, for that address only |
 | `POST /auth/verify-email/resend` `{email}` | A new link if the address waits for its verification; 202 whatever the address |
+| `POST /auth/password/forgot` `{email}` | A link to choose a new password (1 h); 202 whatever the address |
+| `POST /auth/password/reset` `{token, password}` | The new password: the account unlocked, its address verified, every session of it closed in every product, a notice sent |
 | `POST /auth/login` `{login, password, remember}` | The email or the username and the password: an access token (15 min) in the body, the refresh token in a cookie |
 | `POST /auth/refresh` | A new access token from the cookie, which is replaced |
 | `POST /auth/logout` | The session closed, the cookie cleared |
@@ -247,7 +250,7 @@ wrong passwords). Oro signs their access tokens itself (`account/`):
 - **Logins**: the accounts work through their own database login, `oro_auth`, which can take `oro_account` only:
   some columns of `asata_user`, `asata_user_credential` and `asata_user_refresh_token`, nothing of the messaging. The
   logins of the messaging never read a password (`AccountTest`).
-- **Not yet**: recovering a password, rate limits per address on these routes, phone accounts.
+- **Not yet**: phone accounts (an SMS provider to choose, `asata_user` to allow an account without an email).
 
 ## Rate limits
 
@@ -269,6 +272,18 @@ the costly or noisy ones from their own bucket too. Over a limit: 429 with `Retr
 | `add-member` | `POST /conversations/{id}/members` | 30 | 20 |
 | `upload` | `POST /conversations/{id}/attachments` | 10 | 5 |
 | `stream` | `GET /stream` | 10 | 5 |
+
+The public routes of the accounts (no token) are limited per client address, the `X-Forwarded-For` of the proxy
+(Umoja's nginx sends the client only: a client cannot choose it), and the emails per recipient, whoever asks:
+
+| Kind | Requests | A minute | Burst |
+|---|---|---|---|
+| `login` | `POST /auth/login` (an office shares an address: generous; 5 wrong passwords lock an account) | 30 | 30 |
+| `refresh` | `POST /auth/refresh` | 60 | 30 |
+| `signup` | `POST /auth/signup` | 3 | 10 |
+| `email` | `POST /auth/verify-email/resend`, `/auth/password/forgot` | 3 | 5 |
+| `link` | `POST /auth/verify-email`, `/auth/password/reset` | 10 | 10 |
+| `email-to` | the emails to one address (over: not sent, the same answer) | 1 | 3 |
 
 Open streams are bounded too: 5 per user (its tabs and devices), 10,000 per instance (`oro.live.max-streams-*`). The
 next one is refused, 429 for the user and 503 for the instance, and no open stream is closed for it: a closed one would

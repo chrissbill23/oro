@@ -77,6 +77,25 @@ public class AccountController {
         return new MessageDTO("If this address waits for its verification, a new link is on its way");
     }
 
+    public record ResetRequest(@NotNull String token, @NotNull String password) {
+    }
+
+    @Operation(summary = "A link to choose a new password", description = "The same answer whatever the address")
+    @PostMapping("/auth/password/forgot")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public MessageDTO forgotPassword(@Valid @RequestBody EmailRequest request) {
+        accounts.forgotPassword(request.email());
+        return new MessageDTO("If this address has an account, a link to choose a new password is on its way");
+    }
+
+    @Operation(summary = "Choose a new password", description = "With the token of the link sent by email: every "
+            + "session of the account closed, in every product")
+    @PostMapping("/auth/password/reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPassword(@Valid @RequestBody ResetRequest request) {
+        accounts.resetPassword(request.token(), request.password());
+    }
+
     public record SignedInDTO(String accessToken, String tokenType, long expiresIn, UUID userId, String username,
                               boolean mustChangePassword) {
     }

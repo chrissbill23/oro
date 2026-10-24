@@ -375,8 +375,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
 
 ## P1: Production launch blockers
 
-- [ ] `ORO-LCH-001` — P1 — Oro accounts: sign-up, sign-in, sign-out, recovery, tokens
-  - Partly done (2026-10-24): the decision: Oro signs in **Asata accounts** (asata_user, shared with Umoja and Mokili), signs its tokens itself (RS256, its key, issuer oro), email first and phone later, any SMTP server for the emails. Done: sign-in, refresh with rotation and theft detection, sign-out, the public keys (`backend/README.md`, Accounts), its own login `oro_auth` (`oro_account` only), refresh tokens marked `issuer = 'oro'` and hashed with a prefix so that Umoja and Mokili never accept them, nor Oro theirs. Tested: `AccountTest` (9), on the local stack with a seeded account. Then (2026-10-24) sign-up and email verification: by SMTP (Mailpit in development), the same answer for a known address (a notice to its owner), the address verified before sign-in, links single use (`SignUpTest`, 5; on the local stack, the email read in Mailpit). Left: password recovery, rate limits per address on the public routes, phone accounts. The passwords stay bcrypt (`{bcrypt}`), as Umoja and Mokili read them, not Argon2id: the same account signs in everywhere.
+- [x] `ORO-LCH-001` — P1 — Oro accounts: sign-up, sign-in, sign-out, recovery, tokens
+  - Partly done (2026-10-24): the decision: Oro signs in **Asata accounts** (asata_user, shared with Umoja and Mokili), signs its tokens itself (RS256, its key, issuer oro), email first and phone later, any SMTP server for the emails. Done: sign-in, refresh with rotation and theft detection, sign-out, the public keys (`backend/README.md`, Accounts), its own login `oro_auth` (`oro_account` only), refresh tokens marked `issuer = 'oro'` and hashed with a prefix so that Umoja and Mokili never accept them, nor Oro theirs. Tested: `AccountTest` (9), on the local stack with a seeded account. Then (2026-10-24) sign-up and email verification: by SMTP (Mailpit in development), the same answer for a known address (a notice to its owner), the address verified before sign-in, links single use (`SignUpTest`, 5; on the local stack, the email read in Mailpit). Then password recovery (a link of 1 h; every session of the account closed in every product; a notice) and the limits of the public routes per client address and of the emails per recipient (`PasswordResetTest`, 5; on the local stack with Mailpit). Done for email accounts; the phone accounts are `ORO-LCH-019`. The passwords stay bcrypt (`{bcrypt}`), as Umoja and Mokili read them, not Argon2id: the same account signs in everywhere.
   - Current state: Missing
   - Evidence: `application.yml` expects `ORO_JWT_SECRET` from an account system that does not exist; Umoja has one to
     learn from (`umoja/backend/src/main/java/com/asata/org/umoja/auth/service/TokenService.java`: rotated refresh
@@ -392,6 +392,14 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Estimate: 8 to 12 d (email delivery not included: a provider is needed)
   - Launch impact: Blocker for the Oro launch; not needed for Umoja
   - Verification: integration tests for each flow; a manual review against the OWASP ASVS authentication chapter
+
+- [ ] `ORO-LCH-019` — P1 — Phone accounts
+  - Current state: Missing (decided 2026-10-24: email first, phone next)
+  - Action: `asata_user` to allow an account without an email (email optional, a verified unique phone), checked
+    against Umoja and Mokili, which assume an email; codes by SMS behind an interface (a provider to choose), limited
+    per number and per address against SMS pumping; sign-in and recovery by phone.
+  - Dependencies: `ORO-LCH-001`; a decision on the SMS provider
+  - Launch impact: Blocker for the Oro launch if phone sign-up is promised
 
 - [ ] `ORO-LCH-002` — P1 — Delete an account and its data
   - Current state: Partially implemented (deactivation ends memberships: `IdentityService.deactivate`)
@@ -952,7 +960,8 @@ below are scenarios that are not covered.
   - Launch impact: Recommended before launch
   - Verification: the weekly run
 
-- [ ] `ORO-TST-011` — P4 — Oro account flows
+- [x] `ORO-TST-011` — P4 — Oro account flows
+  - Done (2026-10-24): `AccountTest`, `SignUpTest`, `PasswordResetTest` (19).
   - Current state: Missing
   - Evidence: `ORO-LCH-001`.
   - Action: sign-up, verification, sign-in, lockout, enumeration, refresh reuse, recovery, sign-out.

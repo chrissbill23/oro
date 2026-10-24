@@ -32,6 +32,8 @@ public class AccountProperties {
     private String mailFrom = "Oro <no-reply@oro.localhost>";
     /** how long a link to verify an address stays valid */
     private Duration verifyTtl = Duration.ofHours(24);
+    /** how long a link to choose a new password stays valid */
+    private Duration resetTtl = Duration.ofHours(1);
     /** the length of a new password, at least; at most 128 (bcrypt reads 72 bytes, the rest is refused, not cut) */
     private int minPasswordLength = 10;
 }

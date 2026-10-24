@@ -73,7 +73,7 @@ Caddy in production ([Deployment](deployment.md)).
 - 119 source files under `backend/src/main/java/com/asata/org/oro`: identity, conversation, message, attachment
   (storage, scan, purge), live, outbox, config (security, web, rate limits, metrics, production) and context (the
   database session).
-- 159 tests in 34 classes. The query plans on 10 million messages and the load test (about 1,000 people active at
+- 178 tests in 37 classes. The query plans on 10 million messages and the load test (about 1,000 people active at
   once on 2 CPUs, with 5,000 connected) are in `backend/perf`., on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
@@ -82,7 +82,7 @@ Caddy in production ([Deployment](deployment.md)).
 
 ## Not done yet
 
-- Password recovery for Oro's accounts (sign-up, verification and sign-in into Asata accounts work), and
+- Phone accounts for Oro (email accounts work: sign-up, verification, sign-in, recovery), and
   blocking and reporting between Oro users.
 - Deleting an account with its messages and files.
 - A privacy notice (the retention of deleted content is written: [Retention](retention.md)).

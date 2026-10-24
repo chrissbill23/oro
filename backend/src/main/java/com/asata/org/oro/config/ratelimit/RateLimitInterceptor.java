@@ -21,7 +21,9 @@ import java.util.List;
  * The rate limits of the users, before any work of the request (no database yet): every request of a user takes from
  * its "any" bucket, and the costly or noisy ones from their own bucket too. The user is the one of its token (issuer and
  * subject): limited even before Oro knows its identity. Over a limit: 429 and Retry-After. The integrations (/internal,
- * trusted) are not limited here, the anonymous requests are the proxy's to limit.
+ * trusted) are not limited here. The public routes of the accounts (no token) are limited per client address (the
+ * proxy's X-Forwarded-For: only the client, nginx sets it), against guessing passwords across accounts and flooding
+ * mailboxes; the proxy limits the rest.
  */
 @Slf4j
 @Component
@@ -48,6 +50,16 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             new Rule(HttpMethod.POST, "/conversations/*/attachments", "upload"),
             new Rule(HttpMethod.GET, "/stream", "stream"));
 
+    /** the public routes of the accounts, per client address */
+    private static final List<Rule> ANONYMOUS_RULES = List.of(
+            new Rule(HttpMethod.POST, "/auth/login", "login"),
+            new Rule(HttpMethod.POST, "/auth/refresh", "refresh"),
+            new Rule(HttpMethod.POST, "/auth/signup", "signup"),
+            new Rule(HttpMethod.POST, "/auth/verify-email/resend", "email"),
+            new Rule(HttpMethod.POST, "/auth/password/forgot", "email"),
+            new Rule(HttpMethod.POST, "/auth/verify-email", "link"),
+            new Rule(HttpMethod.POST, "/auth/password/reset", "link"));
+
     private static final AntPathMatcher PATHS = new AntPathMatcher();
     private static final UrlPathHelper URL_PATHS = new UrlPathHelper();
 
@@ -73,8 +85,17 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         // a request counts once: not the dispatches that end a stream or an error
-        if (!properties.isEnabled() || request.getDispatcherType() != DispatcherType.REQUEST
-                || !(authentication instanceof JwtAuthenticationToken token)) {
+        if (!properties.isEnabled() || request.getDispatcherType() != DispatcherType.REQUEST) {
+            return true;
+        }
+        if (!(authentication instanceof JwtAuthenticationToken token)) {
+            String path = URL_PATHS.getPathWithinApplication(request);
+            for (Rule rule : ANONYMOUS_RULES) {
+                if (rule.method().matches(request.getMethod()) && PATHS.match(rule.pattern(), path)) {
+                    take("address/" + request.getRemoteAddr(), rule.kind());
+                    break;
+                }
+            }
             return true;
         }
         String caller = token.getToken().getClaimAsString("iss") + "/" + token.getToken().getSubject();
