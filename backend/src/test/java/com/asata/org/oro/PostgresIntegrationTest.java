@@ -56,6 +56,13 @@ public abstract class PostgresIntegrationTest {
             Path.of(System.getProperty("asata.database.dir", "../../1_ASATA_DATABASE")).toAbsolutePath().normalize();
 
     protected static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17")
+            // each context the tests keep has its three pools open (the API's, the worker's, the accounts')
+            .withCommand("postgres", "-c", "max_connections=300")
+            // the accounts of Asata (asata_user...), which Oro's accounts sign in
+            .withCopyFileToContainer(MountableFile.forHostPath(DATABASE_DIR.resolve("CREATE_ASATA_TABLES.sql")),
+                    "/docker-entrypoint-initdb.d/00-asata-create.sql")
+            .withCopyFileToContainer(MountableFile.forHostPath(DATABASE_DIR.resolve("CREATE_ASATA_TABLES.sql")),
+                    "/scripts/CREATE_ASATA_TABLES.sql")
             .withCopyFileToContainer(MountableFile.forHostPath(DATABASE_DIR.resolve("CREATE_ORO_TABLES.sql")),
                     "/docker-entrypoint-initdb.d/01-oro-create.sql")
             .withCopyFileToContainer(MountableFile.forClasspathResource("test-login.sql"),
@@ -86,8 +93,13 @@ public abstract class PostgresIntegrationTest {
         registry.add("oro.system-datasource.url", POSTGRES::getJdbcUrl);
         registry.add("oro.system-datasource.username", () -> "oro_worker");
         registry.add("oro.system-datasource.password", () -> "oro_worker_test");
-        // the public keys of the products, as they publish them (new for each run): never OTHER
-        registry.add("oro.security.products.ORO.jwk-set", () -> TestTokens.publicJwkSet(TestTokens.ORO));
+        registry.add("oro.account-datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("oro.account-datasource.username", () -> "oro_auth");
+        registry.add("oro.account-datasource.password", () -> "oro_auth_test");
+        // Oro's accounts sign with the key of the test tokens of ORO: the tokens of the tests and the ones its sign-in
+        // gives are checked the same way, with its own public keys. Umoja's, as Umoja publishes them (new for each run)
+        registry.add("oro.accounts.signing-key", () -> TestTokens.privateKeyPkcs8(TestTokens.ORO));
+        registry.add("oro.accounts.cookie-secure", () -> "false");
         registry.add("oro.security.products.UMOJA.jwk-set", () -> TestTokens.publicJwkSet(TestTokens.UMOJA));
     }
 
@@ -122,7 +134,7 @@ public abstract class PostgresIntegrationTest {
         tx = new TransactionTemplate(transactionManager);
         admin.execute("""
                 TRUNCATE oro_outbox_event, oro_message_reaction, oro_attachment, oro_message, oro_conversation_member, oro_conversation,
-                         oro_organization_access, oro_organization_sync, oro_messaging_identity""");
+                         oro_organization_access, oro_organization_sync, oro_messaging_identity, asata_user CASCADE""");
         outboxHandler.reset();
         // the limits of the users count again: a test is not limited by the requests of the others
         rateLimiter.reset();

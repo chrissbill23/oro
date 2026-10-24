@@ -58,7 +58,10 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | Variable | Default | Purpose |
 |---|---|---|
 | `UMOJA_JWKS_URI` | `http://umoja:8080/umoja/.well-known/jwks.json` (`http://localhost:8081/…` outside Docker) | Where Umoja publishes the public keys of its tokens. Empty: Umoja users cannot call Oro |
-| `ORO_JWKS_URI` | none | The public keys of Oro's own account system (to come). Empty: Oro users cannot call |
+| `ORO_JWKS_URI` | none | Empty: Oro's tokens are the ones its accounts sign, checked with their keys in the process. Set: another issuer of Oro's tokens |
+| `ORO_ACCOUNTS_SIGNING_KEY` | a new one at each start | The RSA key that signs the access tokens of Oro's accounts (PKCS#8, base64); required in production (a secret file) |
+| `ORO_ACCOUNT_DATASOURCE_USERNAME`, `_PASSWORD` | `oro_auth` | The accounts' login (`oro_account` only): the only one that reads a password |
+| `ORO_COOKIE_SECURE` | `true` | The refresh cookie only over HTTPS (`false` for `http://localhost`) |
 | `UMOJA_INTEGRATION_KEYS`, `ORO_INTEGRATION_KEYS` | none | The keys of the trusted integrations (`/internal`) as `name:sha256`, comma separated: the SHA-256 of each key in hex, never the key (`printf %s "$KEY" \| shasum -a 256`); two during a [rotation](#rotating-an-integration-key). A key has 32 characters at least (`openssl rand -hex 32`) |
 | `ORO_PORT` | `8082` | Port on the host (8080 Mokili, 8081 Umoja) |
 | `ORO_DB_USERNAME`, `ORO_DB_PASSWORD` | `oro_api`, `oro_api_dev` | The API's login (`NOINHERIT`, a member of `oro_app` only, never a superuser) and its password |
@@ -112,6 +115,7 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessageTest` | Idempotency, including concurrent retries; consecutive sequence numbers without gaps under concurrency; a failed transaction leaves neither the message nor its event, and no gap; no sending as someone else (RLS); sequence integrity; cursor pagination; deleted content is erased for good; edits |
 | `RlsContextTest` | No context means no right at all; the context never leaks to the next transaction on a pooled connection (after a commit or a rollback); product-only context; the context can only be set inside a transaction; the API's login never takes `oro_system`, and each context only on its own login; slow statements and long lock waits end |
 | `CatchUpTest` | Over HTTP: a stream cut, two messages sent meanwhile, the stream back; the list and `?after=` give what was missed |
+| `AccountTest` | Sign-in by email or username, the token on the API, one answer for every failure, the lock after 5 wrong passwords, rotation and a stolen session, sign-out, Umoja's tokens refused, the logins apart |
 | `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention; `ops/outbox-replay.sh` (list, by id, all; anything but an id refused) |
 | `ApiTest` | The HTTP chain with tokens really signed by each product (RS256, `TestTokens`): another key (even under a published `kid`), the audience, HS256 with the former shared secret, unsigned tokens, unknown issuer, expiry, no expiry, a subject that is not an account id, not-before, clock skew; no API description by default; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
 | `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; a late snapshot never brings back a revoked access, and concurrent synchronizations end as the newest; the list (last message, the other one, unread); mute; rename; reactions (one emoji, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
@@ -206,6 +210,34 @@ curl -H "Authorization: Bearer $TOKEN" -H "x-organization-id: <organization id>"
 # Umoja's integration: Amara joins Acme's conversations
 curl -X PUT -H "x-integration-key: $UMOJA_INTEGRATION_KEY" http://localhost:8082/oro/internal/organizations/<org>/members/<asata user id>   # the key, as Umoja has it
 ```
+
+## Accounts
+
+Oro's people sign in with their **Asata account**: the users of `asata_user` and their password
+(`asata_user_credential`), shared with Umoja and Mokili (the same account, the same password, the same lock after 5
+wrong passwords). Oro signs their access tokens itself (`account/`):
+
+| Route | What |
+|---|---|
+| `POST /auth/login` `{login, password, remember}` | The email or the username and the password: an access token (15 min) in the body, the refresh token in a cookie |
+| `POST /auth/refresh` | A new access token from the cookie, which is replaced |
+| `POST /auth/logout` | The session closed, the cookie cleared |
+| `GET /.well-known/jwks.json` | The public keys of Oro's tokens |
+
+- **Tokens**: RS256 with Oro's key (`ORO_ACCOUNTS_SIGNING_KEY`, its kid), issuer `oro`, audience `oro`, the Asata
+  account's id as subject, the session in `sid`. Oro checks them as the tokens of the product ORO, with its own public
+  keys, in the process: the account id is the identity's external id.
+- **Sessions**: the refresh token in an HttpOnly cookie, `SameSite=Strict`, for `/oro/auth` only, Secure in
+  production; 12 hours, or 30 days with `remember`. Stored in `asata_user_refresh_token`, issuer `oro`, as the
+  SHA-256 of `oro:` + the token: Umoja and Mokili look tokens up by the SHA-256 of the token alone, so they never find
+  Oro's, nor Oro theirs. Replaced at each use; a replaced token used again (stolen) ends the whole session.
+- **Failures**: the same answer for an unknown login, a wrong password, a locked or a disabled account, in the same
+  time (a dummy hash). The logs name the account by its id, never the login typed.
+- **Logins**: the accounts work through their own database login, `oro_auth`, which can take `oro_account` only:
+  some columns of `asata_user`, `asata_user_credential` and `asata_user_refresh_token`, nothing of the messaging. The
+  logins of the messaging never read a password (`AccountTest`).
+- **Not yet**: signing up, verifying an email, recovering a password, rate limits per address on these routes, phone
+  accounts.
 
 ## Rate limits
 

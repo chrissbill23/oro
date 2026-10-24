@@ -72,7 +72,14 @@ public class SecurityConfig {
     @Bean
     @Order(2)
     SecurityFilterChain apiSecurityFilterChain(HttpSecurity http, SecurityProperties properties,
+                                               com.asata.org.oro.account.AccountKeys accountKeys,
                                                @Qualifier("handlerExceptionResolver") HandlerExceptionResolver exceptionResolver) throws Exception {
+        // Oro's own tokens (product ORO): unless keys are given, the ones its accounts sign, checked in process
+        SecurityProperties.ProductTrust oro = properties.getProducts().get(com.asata.org.oro.enums.Product.ORO);
+        if (oro != null && (oro.getJwkSetUri() == null || oro.getJwkSetUri().isBlank())
+                && (oro.getJwkSet() == null || oro.getJwkSet().isBlank())) {
+            oro.setJwkSet(accountKeys.publicKeys().toString(true));
+        }
         Map<String, AuthenticationManager> managers = userTokenManagers(properties);
         stateless(http, exceptionResolver)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource(properties)))
@@ -80,6 +87,9 @@ public class SecurityConfig {
                         // the end of a stream (SseEmitter) is an async dispatch of a request authenticated at its start
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/ping", "/error", "/actuator/health/**", "/doc/**").permitAll()
+                        // the sign-in of Oro's accounts, and the public keys of its tokens
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/auth/login", "/auth/refresh", "/auth/logout").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/.well-known/jwks.json").permitAll()
                         // the actuator is served on the management port only (never published): Prometheus, unauthenticated
                         .requestMatchers("/actuator/info", "/actuator/prometheus").permitAll()
                         .anyRequest().authenticated())

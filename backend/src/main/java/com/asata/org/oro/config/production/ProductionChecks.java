@@ -13,7 +13,9 @@ import java.util.Set;
  * The production profile refuses to start on a setting of development: every problem at once, never a secret in the
  * message. What a production needs:
  * <ul>
- * <li>passwords of its own for the two logins (never a placeholder of the development or the tests);</li>
+ * <li>passwords of its own for the three logins (never a placeholder of the development or the tests);</li>
+ * <li>the signing key of its accounts (a key made at each start would sign everyone out at each restart), their
+ * refresh cookie Secure;</li>
  * <li>the malware scan by ClamAV, no API description, the rate limits on;</li>
  * <li>browser origins over HTTPS only, none on localhost;</li>
  * <li>the actuator on a port of its own (never the API's: it would be public);</li>
@@ -27,7 +29,7 @@ public class ProductionChecks {
 
     /** the passwords of the development and the tests: public, in the repositories */
     static final Set<String> PLACEHOLDERS = Set.of("oro_api_dev", "oro_worker_dev", "oro_api_test", "oro_worker_test",
-            "oro_service_dev", "oro_service_test", "postgres", "password", "changeme");
+            "oro_auth_dev", "oro_auth_test", "oro_service_dev", "oro_service_test", "postgres", "password", "changeme");
 
     public ProductionChecks(Environment environment) {
         List<String> problems = problems(environment);
@@ -42,6 +44,13 @@ public class ProductionChecks {
         List<String> problems = new ArrayList<>();
         password(env, "spring.datasource.password", "the API's database login", problems);
         password(env, "oro.system-datasource.password", "the worker's database login", problems);
+        password(env, "oro.account-datasource.password", "the accounts' database login", problems);
+        if (env.getProperty("oro.accounts.signing-key", "").isBlank()) {
+            problems.add("no signing key for the accounts (ORO_ACCOUNTS_SIGNING_KEY): every restart would sign everyone out");
+        }
+        if (!env.getProperty("oro.accounts.cookie-secure", Boolean.class, true)) {
+            problems.add("the refresh cookie is not Secure (ORO_COOKIE_SECURE)");
+        }
         if (!"clamav".equals(env.getProperty("oro.attachments.scan"))) {
             problems.add("oro.attachments.scan is not clamav: files would be served unscanned");
         }

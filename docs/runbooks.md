@@ -180,6 +180,9 @@ A stolen account, someone who must lose access now.
 - **Umoja's signing key**: a new key in `UMOJA_JWT_SIGNING_KEY`, **no** `UMOJA_JWT_PREVIOUS_KEYS` (every token signed
   with the leaked one must die), restart Umoja, then restart Oro: Oro keeps the public keys it fetched up to 5
   minutes, a restart drops them. Everyone signs in again.
+- **Oro's signing key** (`secrets/oro_accounts_signing_key`): a new key, no previous one, restart Oro: every
+  access token of Oro dies at once (Oro checks them in the process, no cache); the sessions stay, and give new tokens
+  with the new key.
 - **A password of a database login**: a new file in `secrets/` of both repositories, `production-logins.sql`, restart
   Oro (Deployment, Rotations).
 - **The passphrase of a backup**: the backups made with it are readable by whoever has it and the bucket. Rotate the

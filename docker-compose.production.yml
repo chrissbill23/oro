@@ -27,6 +27,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://asata-postgres:5432/asata
       SPRING_DATASOURCE_USERNAME: oro_api
       ORO_SYSTEM_DATASOURCE_USERNAME: oro_worker
+      ORO_ACCOUNT_DATASOURCE_USERNAME: oro_auth
       ORO_OUTBOX_ENABLED: "true"
       ORO_API_DOCS: "false"
       UMOJA_JWKS_URI: http://umoja:8080/umoja/.well-known/jwks.json
@@ -41,6 +42,11 @@ services:
         target: spring.datasource.password
       - source: oro_worker_db_password
         target: oro.system-datasource.password
+      - source: oro_auth_db_password
+        target: oro.account-datasource.password
+      # the private key that signs the access tokens of Oro's accounts (PKCS#8, base64): never in an environment
+      - source: oro_accounts_signing_key
+        target: oro.accounts.signing-key
       - source: umoja_integration_keys
         target: oro.security.products.UMOJA.integration-keys
     ports: !reset []
@@ -61,6 +67,10 @@ secrets:
     file: ./secrets/oro_api_db_password
   oro_worker_db_password:
     file: ./secrets/oro_worker_db_password
+  oro_auth_db_password:
+    file: ./secrets/oro_auth_db_password
+  oro_accounts_signing_key:
+    file: ./secrets/oro_accounts_signing_key
   # name:sha256 of each key, comma separated (never the keys)
   umoja_integration_keys:
     file: ./secrets/umoja_integration_keys

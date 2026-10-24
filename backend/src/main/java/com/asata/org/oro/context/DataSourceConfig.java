@@ -15,10 +15,12 @@ import org.springframework.orm.jpa.JpaTransactionManager;
 import javax.sql.DataSource;
 
 /**
- * Two logins, two pools. The API's (spring.datasource, a member of oro_app only) serves the requests of the users,
+ * Three logins, three pools. The API's (spring.datasource, a member of oro_app only) serves the requests of the users,
  * JPA included: it can never take oro_system, whatever a request makes it run. The worker's (oro.system-datasource, a
  * member of oro_system only) serves the trusted integrations and the workers, in transactions of
- * {@link DbSession#SYSTEM_TRANSACTION_MANAGER}. Both logins are NOINHERIT: no right without a context.
+ * {@link DbSession#SYSTEM_TRANSACTION_MANAGER}. The accounts' (oro.account-datasource, a member of oro_account only)
+ * serves the sign-in: the only one that reads a password, and it reads nothing of the messaging. All NOINHERIT: no right
+ * without a context.
  */
 @Configuration
 public class DataSourceConfig {
@@ -74,6 +76,32 @@ public class DataSourceConfig {
     @Primary
     JpaTransactionManager transactionManager(EntityManagerFactory entityManagerFactory) {
         return new JpaTransactionManager(entityManagerFactory);
+    }
+
+    @Bean
+    @ConfigurationProperties("oro.account-datasource")
+    DataSourceProperties accountDataSourceProperties() {
+        return new DataSourceProperties();
+    }
+
+    @Bean
+    @ConfigurationProperties("oro.account-datasource.hikari")
+    HikariDataSource accountDataSource(@Qualifier("accountDataSourceProperties") DataSourceProperties properties) {
+        HikariDataSource dataSource = properties.initializeDataSourceBuilder().type(HikariDataSource.class).build();
+        dataSource.setPoolName("oro-account");
+        dataSource.addDataSourceProperty(NO_ERROR_DETAIL, "false");
+        return dataSource;
+    }
+
+    @Bean
+    JdbcTemplate accountJdbcTemplate(@Qualifier("accountDataSource") DataSource accountDataSource) {
+        return new JdbcTemplate(accountDataSource);
+    }
+
+    /** the transactions of the accounts: JDBC, on the accounts' pool */
+    @Bean(com.asata.org.oro.account.AccountDb.TRANSACTION_MANAGER)
+    JdbcTransactionManager accountTransactionManager(@Qualifier("accountDataSource") DataSource accountDataSource) {
+        return new JdbcTransactionManager(accountDataSource);
     }
 
     /** the transactions of the integrations and the workers: JDBC, on the worker's pool */

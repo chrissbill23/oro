@@ -63,7 +63,10 @@ public class HttpExceptionHandler {
     @ExceptionHandler({Unauthorized.class, AuthenticationException.class})
     public ResponseEntity<ErrorDTO> unauthorized(Exception e, HttpServletRequest request) {
         log.info("unauthorized request on {}", request.getRequestURI());
-        return error(request, HttpStatus.UNAUTHORIZED, "Authentication required", null);
+        // Oro's own refusals say what to do (sign in again, wrong password...); the messages of Spring Security may
+        // describe the token: never shown
+        String message = e instanceof Unauthorized ? e.getMessage() : "Authentication required";
+        return error(request, HttpStatus.UNAUTHORIZED, message, null);
     }
 
     @ExceptionHandler({Forbidden.class, AccessDeniedException.class})

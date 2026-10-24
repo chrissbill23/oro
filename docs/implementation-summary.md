@@ -82,7 +82,8 @@ Caddy in production ([Deployment](deployment.md)).
 
 ## Not done yet
 
-- An account system for Oro, to issue the tokens of its users, and blocking and reporting between Oro users.
+- Sign-up, email verification and password recovery for Oro's accounts (sign-in into Asata accounts works), and
+  blocking and reporting between Oro users.
 - Deleting an account with its messages and files.
 - A privacy notice (the retention of deleted content is written: [Retention](retention.md)).
 - Who is on call, and the runbooks rehearsed on a staging server ([Runbooks](runbooks.md)).

@@ -20,6 +20,13 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${ORO_DB_PASSWORD:-oro_api_dev}
       ORO_SYSTEM_DATASOURCE_USERNAME: ${ORO_WORKER_DB_USERNAME:-oro_worker}
       ORO_SYSTEM_DATASOURCE_PASSWORD: ${ORO_WORKER_DB_PASSWORD:-oro_worker_dev}
+      # the accounts' login (oro_account only): the sign-in into Asata accounts
+      ORO_ACCOUNT_DATASOURCE_USERNAME: ${ORO_AUTH_DB_USERNAME:-oro_auth}
+      ORO_ACCOUNT_DATASOURCE_PASSWORD: ${ORO_AUTH_DB_PASSWORD:-oro_auth_dev}
+      # the key that signs the tokens of Oro's accounts (unset: a new one at each start, development only)
+      ORO_ACCOUNTS_SIGNING_KEY: ${ORO_ACCOUNTS_SIGNING_KEY:-}
+      # http://localhost: a Secure cookie would not come back from every browser
+      ORO_COOKIE_SECURE: ${ORO_COOKIE_SECURE:-false}
       ORO_OUTBOX_ENABLED: ${ORO_OUTBOX_ENABLED:-true}
       # Swagger UI on /oro/doc: development only, set ORO_API_DOCS=false in production
       ORO_API_DOCS: ${ORO_API_DOCS:-true}

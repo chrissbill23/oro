@@ -4,8 +4,10 @@ Oro Messaging is the Asata messaging service shared by two Asata products:
 - **Oro**: personal messaging (direct messages, friends, family groups, communities).
 - **Umoja**: business messaging inside an organization (direct messages, groups, one chat per team).
 
-Each product keeps its own accounts and signs its own tokens; Oro stores no password, email or credential. The two
-products share the service, and nothing in it lets one reach the other's users or conversations.
+People sign in with their Asata account, the one Umoja and Mokili use too; each product signs its own tokens. The
+messaging stores no password, email or credential: Oro's sign-in reads the Asata accounts through a database login of
+its own, which reads nothing of the messaging. The two products share the service, and nothing in it lets one reach
+the other's users or conversations.
 
 ## What it does
 
@@ -44,7 +46,7 @@ development data, and `oro/DROP.sql`).
 
 Working: everything listed above. Not done yet:
 
-- Oro's own account system, which would issue its users' tokens.
+- Signing up, verifying an email and recovering a password for Oro's accounts (signing in to an Asata account works).
 - An object storage for the files (they go to a local disk, scanned by ClamAV and backed up with restic).
 - Push notifications.
 - More than one instance (the live streams live in memory).

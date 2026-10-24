@@ -21,6 +21,10 @@ class MigrationTest extends PostgresIntegrationTest {
     void emptyDatabase() throws Exception {
         sql("postgres", "DROP DATABASE IF EXISTS " + DATABASE);
         sql("postgres", "CREATE DATABASE " + DATABASE);
+        // the accounts of Oro need the tables of Asata, created before Oro's
+        ExecResult asata = shell("psql -q -v ON_ERROR_STOP=1 -U " + POSTGRES.getUsername() + " -d " + DATABASE
+                + " -f /scripts/CREATE_ASATA_TABLES.sql");
+        assertThat(asata.getExitCode()).as(asata.getStderr()).isZero();
         shell("rm -rf /tmp/migrations && mkdir -p /tmp/migrations");
     }
 

@@ -34,6 +34,7 @@ mkdir -p secrets
 mkpass > secrets/postgres_password
 mkpass > secrets/oro_api_db_password
 mkpass > secrets/oro_worker_db_password
+mkpass > secrets/oro_auth_db_password
 cat > .env <<EOF
 POSTGRES_USER=postgres
 PGBACKREST_CIPHER_PASS=$(mkpass)
@@ -60,7 +61,11 @@ docker compose logs backup                       # "full backup done"
 ```bash
 cd ~/asata/oro
 mkdir -p secrets
-cp ../1_ASATA_DATABASE/secrets/oro_api_db_password ../1_ASATA_DATABASE/secrets/oro_worker_db_password secrets/
+cp ../1_ASATA_DATABASE/secrets/oro_api_db_password ../1_ASATA_DATABASE/secrets/oro_worker_db_password \
+   ../1_ASATA_DATABASE/secrets/oro_auth_db_password secrets/
+# the key that signs the tokens of Oro's accounts: in the vault too (lost, everyone signs in again)
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 \
+  | tr -d '\n' > secrets/oro_accounts_signing_key
 UMOJA_KEY=$(openssl rand -hex 32)                 # Umoja's, in step 3; Oro keeps its hash only
 printf 'current:%s' "$(printf %s "$UMOJA_KEY" | shasum -a 256 | cut -d' ' -f1)" > secrets/umoja_integration_keys
 mkpass > secrets/files_backup_password
@@ -77,7 +82,8 @@ docker compose ps oro                             # "healthy": ready, the databa
 
 Oro refuses to start in production on a setting of development (`ProductionChecks`): a placeholder or short password,
 no ClamAV, the API description on, the rate limits off, an origin that is not HTTPS, the actuator on the API's port, the
-Umoja integration without a key. It lists every problem at once.
+Umoja integration without a key, no signing key for the accounts, a refresh cookie that is not Secure. It lists every
+problem at once.
 
 Give Alertmanager a receiver that reaches someone (`monitoring/alertmanager.yml`) before going live.
 

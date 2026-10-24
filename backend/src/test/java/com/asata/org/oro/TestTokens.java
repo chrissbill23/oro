@@ -31,6 +31,15 @@ public final class TestTokens {
     }
 
     /** the public JWK set of the key, as a product publishes it */
+    /** the private key as oro.accounts.signing-key takes it: PKCS#8, base64 */
+    public static String privateKeyPkcs8(RSAKey key) {
+        try {
+            return java.util.Base64.getEncoder().encodeToString(key.toRSAPrivateKey().getEncoded());
+        } catch (com.nimbusds.jose.JOSEException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     public static String publicJwkSet(RSAKey... keys) {
         return new JWKSet(java.util.Arrays.stream(keys).map(key -> (com.nimbusds.jose.jwk.JWK) key.toPublicJWK()).toList())
                 .toString();
