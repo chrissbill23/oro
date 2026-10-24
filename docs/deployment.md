@@ -56,6 +56,9 @@ docker compose -f docker-compose.yml -f docker-compose.production.yml exec postg
 docker compose logs backup                       # "full backup done"
 ```
 
+An hour after the first start, and every week, the service `restore-check` restores the latest backup and checks it
+(`docker compose logs restore-check`: "done"): keep as much free disk as the database for it.
+
 ## 2. Oro
 
 ```bash

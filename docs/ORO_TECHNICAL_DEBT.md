@@ -192,7 +192,7 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 
 - **Today** (since 2026-10-23): CI runs the tests and builds the image on every push and pull request, and `main`
   requires it to pass. Oro logs JSON, exposes its metrics on the management port, and Prometheus and Alertmanager run
-  next to it with 19 rules.
+  next to it with 20 rules.
 - **Risk**: the monitoring runs on the server it watches, so a dead server alerts no one; Alertmanager has no receiver
   yet (`shown-only`); there is no error tracker; CI reads the database repository at a feature branch
   (`FA-13-fixes-and-improvements`).

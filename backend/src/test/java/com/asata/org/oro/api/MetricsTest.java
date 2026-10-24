@@ -57,6 +57,8 @@ class MetricsTest extends PostgresIntegrationTest {
         assertThat(value(scrape, "oro_attachments_disk_free_bytes")).isPositive();
         // the WAL archiving of the database of the tests is off: no last archive, NaN
         assertThat(scrape).contains("oro_wal_archive_age_seconds", "oro_files_backup_age_seconds", "jvm_memory_used_bytes",
+                "oro_restore_check_age_seconds{application=\"oro\",what=\"database\"}",
+                "oro_restore_check_age_seconds{application=\"oro\",what=\"files\"}",
                 "hikaricp_connections_active", "logback_events_total");
     }
 

@@ -49,6 +49,8 @@ services:
       ORO_ATTACHMENTS_SCAN: clamav
       ORO_CLAMAV_HOST: clamav
       ORO_FILES_BACKUP_STATUS: /backup-status/last-success
+      ORO_FILES_CHECK_STATUS: /backup-status/files-check-last-success
+      ORO_DATABASE_CHECK_STATUS: /restore-status/database-last-success
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     secrets:
       - source: oro_api_db_password

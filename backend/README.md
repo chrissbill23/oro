@@ -773,6 +773,7 @@ What Oro measures, besides the requests by route and status (`http_server_reques
 | `oro_conversation_lock_seconds` | The wait for the row of a conversation (sends take turns) |
 | `oro_streams_open` | The streams open on the instance |
 | `oro_streams_ended_slow_total` | The streams ended because their client read too slowly (500 events behind) |
+| `oro_restore_check_age_seconds{what}` | Since the weekly restore check of the backups (`database`, `files`) last succeeded (alert `RestoreCheckTooOld` past 8 days) |
 | `oro_push_sent_total{outcome}` | The pushes: sent, gone (the subscription removed), failed |
 | `oro_erasures_pending`, `oro_erasures_oldest_pending_seconds` | The erasures of people asked and not done (alert `OroErasureStuck` past an hour) |
 | `oro_live_events_stale_total` | The outbox events too old to send (the outbox late, a retry, a replay): their recipients reconnected instead |

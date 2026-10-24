@@ -132,6 +132,21 @@ and deleted data stays longer than the 21 days of [Retention](retention.md).
 4. State unknown: `dc ps backup-exporter`, `dc logs backup-exporter` (the passphrase, `PGBACKREST_CIPHER_PASS`).
 5. Fixed: `docker exec asata-backup-1 pgbackrest backup --type=diff`, then `pgbackrest info`.
 
+### RestoreCheckTooOld (warning)
+
+The weekly restore check of the backups (`what`: `database` or `files`) has not succeeded for over 8 days, or never.
+
+- **database**: `cd 1_ASATA_DATABASE && dc logs --tail 100 restore-check`. It restores the latest backup into its own
+  container, starts PostgreSQL on it, counts its tables, removes it: `FAILED` with the reason (the repository, its
+  passphrase, the disk: it needs as much free space as the database). Run it now: `RESTORE_CHECK_DELAY=1 dc up -d
+  restore-check`, then its logs.
+- **files**: `dc logs --tail 100 files-backup | grep check` (in `oro`): a tenth of the repository read and verified,
+  then 20 files restored and compared with the volume. A file that differs is named. Run it now: remove
+  `/status/files-check-last-success` in the container (`docker exec oro-files-backup-1 rm /status/files-check-last-success`)
+  and restart it.
+- A backup that does not restore is no backup: until fixed, take a backup by hand and check it
+  (`backup/restore-drill.sh`, `backend/backup/files-restore-check.sh`).
+
 ### FilesBackupTooOld (warning)
 
 No snapshot of the files for 3 hours.
@@ -244,8 +259,9 @@ Integration keys every 6 to 12 months (backend README, Rotating an integration k
 
 - The database to a point in time: `1_ASATA_DATABASE/README.md`, Recovering the database; then Oro: the backend
   README, Recovering Oro; then what was deleted since: [Retention](retention.md), Restoring a backup.
-- Checks that the backups restore: `1_ASATA_DATABASE/backup/restore-drill.sh` (the database, to a throwaway
-  container) and `backend/backup/files-restore-check.sh` (the files): monthly at least (`ORO-TST-010`).
+- The backups are checked every week by themselves (the alert `RestoreCheckTooOld`): the database restored whole
+  (`restore-check`), the files a tenth of their data and 20 of them restored. By hand, to a point in time or in full:
+  `1_ASATA_DATABASE/backup/restore-drill.sh` and `backend/backup/files-restore-check.sh`.
 
 ## Rehearsed
 
@@ -256,6 +272,7 @@ Integration keys every 6 to 12 months (backend README, Rotating an integration k
 | Revoke a user at once (suspend, reactivate), the commands above | 2026-10-24 | local stack |
 | Replay failed events (`outbox-replay.sh list`) | 2026-10-24 | local stack; the replay itself in the tests |
 | Restore drill of the database (point in time) | 2026-10-23 | local stack (`restore-drill.sh`, 5 s) |
+| The weekly restore checks (database, files) | 2026-10-24 | local stack (the database restored in 8 s; a probe file restored and compared) |
 | Restore check of the files | 2026-10-23 | local stack (`files-restore-check.sh`) |
 | Schema upgrade (`migrate.sh`) | 2026-10-24 | local stack |
 | Rotating an integration key | no | needs Umoja running |

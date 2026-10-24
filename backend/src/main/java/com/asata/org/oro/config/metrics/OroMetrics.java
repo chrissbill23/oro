@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * <li>oro_wal_archive_age_seconds, oro_wal_archive_failed: the point-in-time recovery (pg_stat_archiver)</li>
  * <li>oro_erasures_pending, oro_erasures_oldest_pending_seconds: the erasures of people asked and not done</li>
  * <li>oro_streams_open, oro_attachments_disk_free_bytes, oro_files_backup_age_seconds: read when scraped</li>
+ * <li>oro_restore_check_age_seconds{what=database|files}: since the weekly restore check last succeeded</li>
  * </ul>
  * NaN when not known (yet).
  */
@@ -39,7 +40,9 @@ public class OroMetrics {
     private final String filesBackupStatus;
 
     public OroMetrics(MeterRegistry registry, DbSession session, LiveHub hub, ObjectProvider<FileStorage> storage,
-                      @Value("${oro.monitoring.files-backup-status:}") String filesBackupStatus) {
+                      @Value("${oro.monitoring.files-backup-status:}") String filesBackupStatus,
+                      @Value("${oro.monitoring.files-check-status:}") String filesCheckStatus,
+                      @Value("${oro.monitoring.database-check-status:}") String databaseCheckStatus) {
         this.session = session;
         this.filesBackupStatus = filesBackupStatus;
         for (String name : new String[]{"outbox.pending", "outbox.failed", "outbox.oldest.pending.seconds",
@@ -56,6 +59,11 @@ public class OroMetrics {
             return usable < 0 ? Double.NaN : usable;
         }).register(registry);
         Gauge.builder("oro.files.backup.age.seconds", this, OroMetrics::filesBackupAge).register(registry);
+        // the restore checks of the backups (weekly): the database's (its service restore-check), the files'
+        Gauge.builder("oro.restore.check.age.seconds", databaseCheckStatus, OroMetrics::ageOf).tag("what", "database")
+                .description("since the backups of the database last restored").register(registry);
+        Gauge.builder("oro.restore.check.age.seconds", filesCheckStatus, OroMetrics::ageOf).tag("what", "files")
+                .description("since the backups of the files last checked").register(registry);
     }
 
     @Scheduled(fixedDelayString = "${oro.monitoring.refresh:PT15S}", initialDelayString = "PT5S")
@@ -100,11 +108,16 @@ public class OroMetrics {
 
     /** seconds since the backup of the files last succeeded (the time its loop writes), NaN when unknown */
     double filesBackupAge() {
-        if (filesBackupStatus == null || filesBackupStatus.isBlank()) {
+        return ageOf(filesBackupStatus);
+    }
+
+    /** seconds since the time (epoch seconds) a file holds: a backup or a check written by its loop; NaN when unknown */
+    static double ageOf(String statusFile) {
+        if (statusFile == null || statusFile.isBlank()) {
             return Double.NaN;
         }
         try {
-            long at = Long.parseLong(Files.readString(Path.of(filesBackupStatus)).strip());
+            long at = Long.parseLong(Files.readString(Path.of(statusFile)).strip());
             return Instant.now().getEpochSecond() - at;
         } catch (Exception e) {
             return Double.NaN;

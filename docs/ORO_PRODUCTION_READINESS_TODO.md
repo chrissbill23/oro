@@ -953,7 +953,8 @@ below are scenarios that are not covered.
   - Launch impact: Blocker
   - Verification: CI
 
-- [ ] `ORO-TST-010` — P4 — Automated restore check
+- [x] `ORO-TST-010` — P4 — Automated restore check
+  - Done (2026-10-24): every week by themselves: the database restored whole into the service `restore-check` (1_ASATA_DATABASE, PostgreSQL started on it, its tables counted, then removed), the files a tenth of their data verified (all of it in ten weeks) and 20 of them restored and compared (`files-backup.sh`); their last success read by Oro (`oro_restore_check_age_seconds`) and the alert `RestoreCheckTooOld` past 8 days. Checked on the local stack. Left: the in-place recovery on a staging server (`ORO-LCH-016`).
   - Partly done (2026-10-23): the drills exist and were run (`restore-drill.sh`, `files-restore-check.sh`); left: running them weekly on a schedule and alerting on a failure.
   - Current state: Missing
   - Evidence: `ORO-LCH-007`.

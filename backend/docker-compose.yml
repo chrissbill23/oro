@@ -48,6 +48,8 @@ services:
       ORO_ATTACHMENTS_SCAN: ${ORO_ATTACHMENTS_SCAN:-clamav}
       ORO_CLAMAV_HOST: clamav
       ORO_FILES_BACKUP_STATUS: /backup-status/last-success
+      ORO_FILES_CHECK_STATUS: /backup-status/files-check-last-success
+      ORO_DATABASE_CHECK_STATUS: /restore-status/database-last-success
       # the logs as JSON (Elastic Common Schema), the request id in each line
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ${ORO_LOG_FORMAT:-ecs}
     volumes:
@@ -55,6 +57,8 @@ services:
       - attachments:/data/attachments
       # when the backup of the files last succeeded (files-backup writes it), for the metrics
       - files-backup-status:/backup-status:ro
+      # when the backups of the database last restored (1_ASATA_DATABASE's restore-check)
+      - restore-status:/restore-status:ro
     networks:
       default:
       asata:
@@ -135,6 +139,10 @@ services:
     restart: unless-stopped
 
 volumes:
+  # created by ../../1_ASATA_DATABASE/docker-compose.yml (its restore-check)
+  restore-status:
+    external: true
+    name: asata_restore-status
   attachments:
   prometheus-data:
   clamav-signatures:

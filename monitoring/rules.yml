@@ -134,6 +134,13 @@ groups:
         annotations:
           summary: "PostgreSQL cannot archive its WAL"
           description: "Point-in-time recovery is broken, and WAL piles up on the disk of the database. See its logs."
+      - alert: RestoreCheckTooOld
+        expr: oro_restore_check_age_seconds > 8 * 86400 or oro_restore_check_age_seconds != oro_restore_check_age_seconds
+        for: 2h
+        labels: { severity: warning }
+        annotations:
+          summary: "The backups of the {{ $labels.what }} have not been checked for over 8 days, or never"
+          description: "The weekly restore check failed or did not run: see the runbooks (RestoreCheckTooOld)."
       - alert: FilesBackupTooOld
         expr: oro_files_backup_age_seconds > 3 * 3600 or oro_files_backup_age_seconds != oro_files_backup_age_seconds
         for: 30m
