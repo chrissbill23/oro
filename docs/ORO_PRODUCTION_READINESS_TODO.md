@@ -708,7 +708,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Post-launch
   - Verification: two-instance test with Testcontainers
 
-- [ ] `ORO-SCL-007` — P2 — Load tests and baselines
+- [x] `ORO-SCL-007` — P2 — Load tests and baselines
+  - Done (2026-10-24): k6 and a holder of streams (`backend/perf/load`), Oro on 2 CPUs and 2 GB, 10 million messages, 5,000 streams open: 1,000 people active at once with list p95 123 ms and send p95 88 ms, no error; saturation at about 300 requests a second, between 1,500 and 2,000 people; a group of 499 sending 10 messages a second does not move the break; the streams held, the outbox lag under 2 s. The baseline is written (`backend/perf/README.md`). Left: the expected peak, to check the margin of 3 (on this size, a peak of about 330 people active); uploads with ClamAV; a restart during the test (`ORO-LCH-012`).
   - Current state: Missing
   - Evidence: no load test in the repositories.
   - Problem: the limits of one instance are unknown.
@@ -732,7 +733,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Post-launch
   - Verification: migration rehearsal on a copy
 
-- [ ] `ORO-SCL-009` — P2 — Size the connection pool and the server threads
+- [x] `ORO-SCL-009` — P2 — Size the connection pool and the server threads
+  - Done (2026-10-24): from the load test: the API's pool 10 and the worker's 5, now explicit (`ORO_DB_POOL_SIZE`, `ORO_WORKER_DB_POOL_SIZE`); Tomcat's 200 threads. No wait for a connection up to 1,000 people; past the saturation of the CPUs the requests wait for one, and a request that gets none in 5 s now answers 503 with `Retry-After` instead of 500 (`HttpExceptionHandlerTest`). More connections would only queue more work in PostgreSQL. With Umoja's pool, the total stays well under `max_connections` (100).
   - Current state: Defaults (Hikari 10 connections, Tomcat 200 threads)
   - Evidence: `application.yml` (`hikari` timeouts only).
   - Problem: two pools after `ORO-SEC-001`; streams hold a socket, not a thread nor a connection (verified:
@@ -958,7 +960,8 @@ below are scenarios that are not covered.
   - Launch impact: Blocker for the Oro launch
   - Verification: CI
 
-- [ ] `ORO-TST-012` — P4 — Load and stress
+- [x] `ORO-TST-012` — P4 — Load and stress
+  - Done (2026-10-24): with `ORO-SCL-007` (`backend/perf/load`): up to 3,000 people and past the break.
   - Current state: Missing
   - Evidence: `ORO-SCL-007`.
   - Action: the scenarios of `ORO-SCL-007`, kept in the repository.

@@ -54,6 +54,9 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:oro_api}
     password: ${SPRING_DATASOURCE_PASSWORD:}
     hikari:
+      # the load test (backend/perf): on 2 CPUs the connections wait for the CPU, not the other way round; more
+      # connections only queue more work in PostgreSQL. A connection not free within connection-timeout: 503
+      maximum-pool-size: ${ORO_DB_POOL_SIZE:10}
       connection-timeout: 5000
       validation-timeout: 3000
 springdoc:
@@ -107,7 +110,9 @@ oro:
     username: ${ORO_SYSTEM_DATASOURCE_USERNAME:oro_worker}
     password: ${ORO_SYSTEM_DATASOURCE_PASSWORD:}
     hikari:
-      maximum-pool-size: 5
+      # the outbox worker, the integrations, the scans and purges: all 5 busy, 2 waiting at the load test's worst (a
+      # group of 500 sending 10 messages a second); the outbox lag stayed under 2 s up to 1,500 users, 7.7 s at 3,000
+      maximum-pool-size: ${ORO_WORKER_DB_POOL_SIZE:5}
       connection-timeout: 5000
       validation-timeout: 3000
   security:

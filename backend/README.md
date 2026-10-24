@@ -76,6 +76,7 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | `ORO_FILES_BACKUP_PASSWORD` | none | The passphrase of the backups of the files (restic); unset: no backup. Lost, the backups are lost with it |
 | `ORO_FILES_BACKUP_REPOSITORY`, `ORO_FILES_BACKUP_S3_KEY`, `ORO_FILES_BACKUP_S3_SECRET` | a volume | Where the backups of the files go: `s3:<endpoint>/<bucket>/oro-files` and its keys in production |
 | `SPRING_PROFILES_ACTIVE` | none | `production`: the secrets from `/run/secrets` (one file per setting), and a refusal to start on any setting of development (`ProductionChecks`); see `docs/deployment.md` |
+| `ORO_DB_POOL_SIZE`, `ORO_WORKER_DB_POOL_SIZE` | `10`, `5` | The connections of the API and of the worker. More does not help once the CPUs are busy ([load test](perf/README.md#load-test-2026-10-24)); keep the sum of every service under PostgreSQL's `max_connections` (100) |
 | `ORO_MANAGEMENT_PORT` | `9082` | The actuator (health, `/actuator/prometheus`), never published: Prometheus reads it on the private network |
 | `ORO_LOG_FORMAT` | `ecs` here | The logs as JSON (Elastic Common Schema), the request id in each line; unset outside Docker: plain lines |
 | `ORO_RATE_LIMITS` | `true` | The [rate limits](#rate-limits) of the users; `false` only to measure without them |
@@ -129,6 +130,7 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MetricsTest` | Prometheus reads Oro without a token: the gauges follow the database (the outbox), the sends are timed, the lock waits and the refused requests counted |
 | `MigrationTest` | The runner of the schema: a new database, migrations applied once in the order of their numbers and recorded, an applied one changed or a failing one stops it and leaves nothing, the migrations of before recorded as included in a new database |
 | `ProductionChecksTest` | Production refuses the settings of development, all at once, naming them without their values |
+| `HttpExceptionHandlerTest` | No database connection free in time: 503 and `Retry-After`, not 500 |
 | `RequestSizeTest` | A request that is not an upload carries 1 MiB at most, with a length or without |
 | `RateLimiterTest` | A bucket: the burst, then the rate, the wait until the next request; never more than the burst; the idle buckets go |
 | `RateLimitTest` | Over HTTP: 429 with `Retry-After` and nothing created; the other kinds and the other users are not limited by it; every request counts in `any` |

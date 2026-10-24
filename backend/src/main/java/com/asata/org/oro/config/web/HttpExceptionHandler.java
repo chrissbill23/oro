@@ -138,6 +138,13 @@ public class HttpExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorDTO> internal(Exception e, HttpServletRequest request) {
+        // no connection free within its timeout (Oro saturated): busy, not broken; the client retries
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLTransientConnectionException) {
+                log.warn("no database connection free for {}: 503", request.getRequestURI());
+                return serviceUnavailable(new ServiceUnavailable("Oro is busy, try again in a few seconds", 2), request);
+            }
+        }
         log.error("error on {}", request.getRequestURI(), e);
         return error(request, HttpStatus.INTERNAL_SERVER_ERROR, "An internal error occurred, please try again later", null);
     }
