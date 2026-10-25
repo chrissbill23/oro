@@ -721,7 +721,7 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Verification: two-instance test with Testcontainers
 
 - [x] `ORO-SCL-007` — P2 — Load tests and baselines
-  - Done (2026-10-24): k6 and a holder of streams (`backend/perf/load`), Oro on 2 CPUs and 2 GB, 10 million messages, 5,000 streams open: 1,000 people active at once with list p95 123 ms and send p95 88 ms, no error; saturation at about 300 requests a second, between 1,500 and 2,000 people; a group of 499 sending 10 messages a second does not move the break; the streams held, the outbox lag under 2 s. The baseline is written (`backend/perf/README.md`). Left: the expected peak, to check the margin of 3 (on this size, a peak of about 330 people active); uploads with ClamAV; a restart during the test (`ORO-LCH-012`).
+  - Done (2026-10-24): k6 and a holder of streams (`backend/perf/load`), Oro on 2 CPUs and 2 GB, 10 million messages, 5,000 streams open: 1,000 people active at once with list p95 123 ms and send p95 88 ms, no error; saturation at about 300 requests a second, between 1,500 and 2,000 people; a group of 499 sending 10 messages a second does not move the break; the streams held, the outbox lag under 2 s. The baseline is written (`backend/perf/README.md`). Then (run 3), Umoja's list updated from the events: about 1,500 people active, breaking at about 2,000, the database 4 times less busy; Oro's CPUs are the limit. Left: the expected peak, to check the margin of 3 (on this size, a peak of about 500 people active); uploads with ClamAV; a restart during the test (`ORO-LCH-012`).
   - Current state: Missing
   - Evidence: no load test in the repositories.
   - Problem: the limits of one instance are unknown.

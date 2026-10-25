@@ -1,11 +1,14 @@
 // The load test of Oro (ORO-SCL-007): people using Umoja's messaging, as its client calls Oro.
 //
-// users: each virtual user is one person (its own token, its organization), every 8 to 12 s: the list again (the
-// client reads it after every event it hears), what came in one of its conversations (?after=), a message 30 % of the
-// time and its read position, a search 3 %, a small file 1 %. busy: the members of a group of 499 sending into it at a
-// fixed rate (the lock of one conversation).
+// users: each virtual user is one person (its own token, its organization), every 8 to 12 s: what it heard on its
+// stream, what came in one of its conversations (?after=), a message 30 % of the time and its read position, a search
+// 3 %, a small file 1 %. What it heard (LIST): `events` (Umoja since 2026-10-24) reads the list once, then the one
+// message of each event for its preview, and the whole list again 2 % of the time (a stream opened again, a
+// conversation changed); `always` (Umoja before) reads the whole list each time. busy: the members of a group of 499
+// sending into it at a fixed rate (the lock of one conversation).
 //
-// Env: BASE (http://oro-load:8082/oro), STAGES (vus:seconds,...), BUSY_RATE (messages per second, 0: none).
+// Env: BASE (http://oro-load:8082/oro), STAGES (vus:seconds,...), BUSY_RATE (messages per second, 0: none),
+// LIST (events | always).
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { SharedArray } from 'k6/data';
@@ -28,6 +31,7 @@ const stages = (__ENV.STAGES || '100:60').split(',').map((s) => {
   return { target: Number(target), duration: `${seconds}s` };
 });
 const busyRate = Number(__ENV.BUSY_RATE || 0);
+const listMode = __ENV.LIST || 'events';
 
 export const options = {
   scenarios: {
@@ -68,17 +72,28 @@ export function user() {
   const vu = exec.vu.idInTest;
   const person = tokens[(vu * 7919) % tokens.length];
   const h = { headers: headers(person) };
-  const me = state[vu] || (state[vu] = { conversations: [] });
+  const me = state[vu] || (state[vu] = { conversations: [], listed: false, lastMessageId: null });
 
-  const list = counted(http.get(`${BASE}/conversations`, Object.assign({}, h, tagged('list'))));
-  check(list, { 'list 200': (r) => r.status === 200 });
-  if (list.status === 200) {
-    me.conversations = list.json().map((c) => ({ id: c.id, seq: c.lastMessageSeq }));
+  if (listMode === 'always' || !me.listed || !me.lastMessageId || Math.random() < 0.02) {
+    const list = counted(http.get(`${BASE}/conversations`, Object.assign({}, h, tagged('list'))));
+    check(list, { 'list 200': (r) => r.status === 200 });
+    if (list.status === 200) {
+      me.conversations = list.json().map((c) => ({ id: c.id, seq: c.lastMessageSeq }));
+      me.listed = true;
+    }
+  } else {
+    // an event heard: the one message, for the preview in the list
+    const one = counted(http.get(`${BASE}/messages/${me.lastMessageId}`, Object.assign({}, h, tagged('preview'))));
+    check(one, { 'preview 200': (r) => r.status === 200 || r.status === 404 });
   }
   if (me.conversations.length) {
     const c = me.conversations[Math.floor(Math.random() * Math.min(me.conversations.length, 10))];
     const after = counted(http.get(`${BASE}/conversations/${c.id}/messages?after=${Math.max(0, c.seq - 3)}`, Object.assign({}, h, tagged('after'))));
     check(after, { 'after 200': (r) => r.status === 200 });
+    if (after.status === 200) {
+      const got = after.json('messages') || [];
+      if (got.length) me.lastMessageId = got[got.length - 1].id;
+    }
 
     if (Math.random() < 0.01) {
       const upload = counted(http.post(`${BASE}/conversations/${c.id}/attachments`,

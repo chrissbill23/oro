@@ -76,7 +76,7 @@ Caddy in production ([Deployment](deployment.md)).
 - 119 source files under `backend/src/main/java/com/asata/org/oro`: identity, conversation, message, attachment
   (storage, scan, purge), live, outbox, config (security, web, rate limits, metrics, production) and context (the
   database session).
-- 197 tests in 41 classes. The query plans on 10 million messages and the load test (about 1,000 people active at
+- 197 tests in 41 classes. The query plans on 10 million messages and the load test (about 1,500 people active at
   once on 2 CPUs, with 5,000 connected) are in `backend/perf`., on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.

@@ -16,10 +16,14 @@ From `oro/backend`:
 
 ```bash
 # loaded with room to work (about 6 minutes)
+# Asata's tables first (Oro's accounts use them), then Oro's schema by its runner, as the shared database does
+DB="$PWD/../../1_ASATA_DATABASE"
 docker run -d --name oro-plans -e POSTGRES_PASSWORD=plans -e POSTGRES_DB=asata -v oro-plans-data:/var/lib/postgresql/data \
-  -v "$PWD/../../1_ASATA_DATABASE/CREATE_ORO_TABLES.sql:/docker-entrypoint-initdb.d/01.sql:ro" -v "$PWD/perf:/plans" \
+  -v "$DB/CREATE_ASATA_TABLES.sql:/docker-entrypoint-initdb.d/01-asata.sql:ro" \
+  -v "$DB/CREATE_ORO_TABLES.sql:/oro-schema/CREATE_ORO_TABLES.sql:ro" -v "$DB/oro:/oro-schema/oro:ro" -v "$PWD/perf:/plans" \
   postgres:17 -c shared_buffers=2GB -c maintenance_work_mem=1GB -c max_wal_size=8GB
-docker exec oro-plans psql -U postgres -d asata -f /plans/generate.sql
+docker exec oro-plans sh -c 'PSQL_ARGS="-U postgres -d asata" sh /oro-schema/oro/migrate.sh'
+docker exec oro-plans psql -U postgres -d asata -v ON_ERROR_STOP=1 -f /plans/generate.sql
 # measured as production runs: the defaults (stop it cleanly first, or it replays its WAL)
 docker stop -t 120 oro-plans && docker rm oro-plans
 docker run -d --name oro-plans -e POSTGRES_PASSWORD=plans -v oro-plans-data:/var/lib/postgresql/data \
@@ -107,18 +111,38 @@ then held 2 minutes:
 - **A busy group** (run 1: 499 members, all online, 10 messages a second for 12 minutes, about 5,000 stream events a
   second, 5.3 million in all) did not move the break: requests waited for a connection from 1,500 people on, as
   without it. One conversation's lock and its fan-out are not the limit at this size.
-- **The list is the main cost**: Umoja read it again after every event, about 40 % of the requests and most of the
-  database's work. Since 2026-10-24 Umoja updates it from the message events instead (it reads the one message, for
-  its preview) and reads the whole list only on a new conversation, a change of members, or a stream opened again.
-  The numbers above are from before: the load test still reads the list every 8 to 12 s, so they are a floor.
+- **The list was the main cost**: Umoja read it again after every event, about 40 % of the requests and most of the
+  database's work. Umoja now updates it from the message events instead (run 3, below).
 
-The launch capacity must be at least 3 times the expected peak: on this size, a peak of about 330 people active at
-once. More: more CPUs for Oro and the database (both were the limit), then the list read less often.
+### Run 3: the list updated from the events
+
+Umoja's client since 2026-10-24 (`LIST=events`, the default of `chat.js`): the list read once, then for each event
+the one message (its preview), the whole list again 2 % of the time (a stream opened again, a conversation changed).
+Same size, same 5,000 streams, data generated again; `LIST=always` at 1,500 as the control, on the same data:
+
+| People active | List p95 | Send p95 | Errors | Requests/s | Oro CPU (of 2) | Database CPU |
+|---|---|---|---|---|---|---|
+| 1,000 | 51 ms | 17 ms | 0 | 213 | 0.6 | 0.4 cores |
+| 1,500 | 80 ms | 81 ms | 0 | 319 | 1.1 (peaks at 2) | 0.7 cores |
+| 2,000 | 344 ms | 722 ms | 0 | 412 | 1.8 (saturated) | 1.1 cores |
+| 3,000 | 3.9 s | 4.1 s | 0 | 400 | 2 (saturated) | 1.3 cores |
+| 1,500, `LIST=always` | 382 ms | 306 ms | 0 | 314 | 1.6 | 2.7 cores (peaks at 4) |
+
+- **Capacity of one instance of this size: about 1,500 people active at once** (with 5,000 connected), up from
+  1,000: the same requests a person, but a message instead of the list. It breaks at about 2,000, 410 requests a
+  second (300 before).
+- **The database works 4 times less** at 1,500 (0.7 cores against 2.7): the limit is now Oro's 2 CPUs alone, so
+  more CPUs for Oro come first.
+- The streams held: 5,000 open from start to end, no failure (3.3 million message events delivered).
+
+The launch capacity must be at least 3 times the expected peak: on this size, a peak of about 500 people active at
+once. More: more CPUs for Oro, then a second instance (`ORO-SCL-006`).
 
 ### Running it
 
 From `oro/backend/perf/load`, the database of the plans running (`oro-plans`), the logins `oro_api` and `oro_worker`
-created on it with passwords of the run:
+created on it with passwords of the run (and `oro_auth`, in `oro_account`, for Oro to be ready; the accounts are not
+measured):
 
 ```bash
 java Tokens.java . 20 500 12                         # jwks.json, tokens.json

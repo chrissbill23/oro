@@ -115,8 +115,8 @@ The choices that limit Oro today, why they were made, what they risk, and when t
   buckets of the rate limits (a restart refills them; two instances would each allow the full rate).
 - **Why**: no message broker, nothing more to run.
 - **Risk**: one instance is a single point of failure; a restart drops every stream (clients reconnect and catch up);
-  capacity is bounded by one machine: about 1,000 people active at once with 5,000 connected on 2 CPUs, breaking
-  between 1,500 and 2,000 (`backend/perf`, 2026-10-24).
+  capacity is bounded by one machine: about 1,500 people active at once with 5,000 connected on 2 CPUs, breaking
+  at about 2,000; Oro's CPUs are the limit, not the database (`backend/perf`, run 3, 2026-10-24).
 - **Revisit**: when the availability target needs a second instance, CPU passes 60 % at peak, or open streams pass
   ~10k. Use PostgreSQL `LISTEN/NOTIFY` first; Redis only if it is measured to be insufficient (`ORO-SCL-006`).
 
