@@ -58,7 +58,7 @@ class MigrationTest extends PostgresIntegrationTest {
         ExecResult first = migrate();
         assertThat(first.getExitCode()).as(first.getStderr()).isZero();
         assertThat(first.getStdout()).contains("a new database", "done (0 applied)");
-        assertThat(sql(DATABASE, "SELECT count(*) FROM pg_tables WHERE tablename LIKE 'oro\\_%'")).isEqualTo("14");
+        assertThat(sql(DATABASE, "SELECT count(*) FROM pg_tables WHERE tablename LIKE 'oro\\_%'")).isEqualTo("15");
         assertThat(sql(DATABASE, "SELECT pg_get_userbyid(relowner) || ' ' || relrowsecurity FROM pg_class WHERE relname = 'oro_schema_version'"))
                 .isEqualTo("oro_owner true");
 

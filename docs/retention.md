@@ -52,7 +52,7 @@ harassment be acted on; it is the one place a deleted message lives on, for that
 - **Metrics** (Prometheus, 15 days) hold counts and times only.
 - **Outbox events** (7 days once processed) hold ids and numbers only.
 - **Pushes** carry who and where, never the text, encrypted for the browser: the push services keep them at most a day
-  for a device that is off.
+  for a device that is off. Oro keeps which device it pushed an event to (ids only) for an hour (`oro_push_delivery`).
 
 ## Out of Oro's reach
 

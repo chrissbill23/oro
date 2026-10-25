@@ -297,6 +297,9 @@ of `pushManager.subscribe`), `PUT /push/subscriptions` takes the browser's subsc
   development only); `ORO_PUSH_SUBJECT`, the contact the push services see.
 - Best effort, from the outbox (`PushOutboxEventHandler`, beside the streams'): a push that fails never fails the
   event; an event over 10 minutes old pushes nothing. `oro_push_sent_total{outcome}`.
+- **Once**: the outbox delivers an event at least once (a retry, a replay); each device is recorded in
+  `oro_push_delivery` before its push, so an event handled again pushes nothing twice (at worst, a crash between the
+  two loses one push). The records go after an hour.
 
 ## Rate limits
 

@@ -758,7 +758,8 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Launch impact: Recommended before launch
   - Verification: load test
 
-- [ ] `ORO-SCL-010` — P2 — Notification delivery without duplicates
+- [x] `ORO-SCL-010` — P2 — Notification delivery without duplicates
+  - Done (2026-10-26): each device claimed in `oro_push_delivery` (event, subscription) before its push, in one query (`ON CONFLICT DO NOTHING RETURNING`); an event handled again pushes only to the devices it never reached; the records purged after an hour (an event over 10 minutes old pushes nothing). Tested: `PushTest.anEventHandledAgainPushesNothingTwice` (a replay: no second push; a device subscribed since: its first).
   - Current state: Missing (comes with push)
   - Evidence: the outbox delivers at least once (`OutboxWorker`).
   - Problem: a retried event would notify twice.

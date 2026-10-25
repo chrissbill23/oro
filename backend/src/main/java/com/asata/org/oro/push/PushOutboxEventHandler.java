@@ -7,23 +7,28 @@ import com.asata.org.oro.outbox.service.ClaimedEvent;
 import com.asata.org.oro.outbox.service.OutboxEventHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * The pushes of a new message: to the members away (no stream open on Oro), never its sender, nor a muted
  * conversation, nor a request or an invitation not accepted. Who and where, never the text: "New message from Amani",
  * "Design: new message from Amani"; the text stays in Oro. One topic per conversation: a newer push replaces one not
  * delivered yet. Best effort: never fails the event (the live events would be sent again for nothing); an event too
- * old (the outbox late, a replay) pushes nothing.
+ * old (the outbox late, a replay) pushes nothing. At most once per event and device (ORO-SCL-010): each device is
+ * claimed in oro_push_delivery before its push, so an event handled again (a retry, a replay) pushes nothing twice.
  */
 @Slf4j
 @Component
@@ -107,6 +112,32 @@ public class PushOutboxEventHandler implements OutboxEventHandler {
         notification.put("tag", conversationId);
         String text = json.writeValueAsString(notification);
         String topic = conversationId.toString().replace("-", "");
-        away.forEach(target -> sender.send(target.subscription(), text, topic));
+        Set<UUID> claimed = claim(event.id(), away);
+        away.stream().filter(target -> claimed.contains(target.subscription().id()))
+                .forEach(target -> sender.send(target.subscription(), text, topic));
+    }
+
+    /** the devices this event has not pushed to yet, now recorded as pushed (before the push: never twice, at worst none) */
+    private Set<UUID> claim(UUID eventId, List<Target> targets) {
+        String ids = targets.stream().map(target -> target.subscription().id().toString())
+                .collect(Collectors.joining(",", "{", "}"));
+        List<UUID> claimed = session.systemTransaction().execute(status -> {
+            session.enterSystem();
+            return session.jdbc().queryForList("""
+                    INSERT INTO oro_push_delivery(event_id, subscription_id)
+                    SELECT ?, id FROM unnest(?::uuid[]) AS id
+                    ON CONFLICT DO NOTHING RETURNING subscription_id""", UUID.class, eventId, ids);
+        });
+        return claimed == null ? Set.of() : new HashSet<>(claimed);
+    }
+
+    /** the records of the pushes past an hour: an event that old pushes nothing anyway */
+    @Scheduled(fixedDelayString = "${oro.push.delivery-purge-interval:PT1H}", initialDelayString = "PT2M")
+    public int purgeDeliveries() {
+        Integer deleted = session.systemTransaction().execute(status -> {
+            session.enterSystem();
+            return session.jdbc().update("DELETE FROM oro_push_delivery WHERE created_at < now() - interval '1 hour'");
+        });
+        return deleted == null ? 0 : deleted;
     }
 }

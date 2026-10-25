@@ -88,6 +88,8 @@ class PushTest extends PostgresIntegrationTest {
     private PushKeys pushKeys;
     @Autowired
     private LiveHub hub;
+    @Autowired
+    private PushOutboxEventHandler pushHandler;
 
     /** a browser: its key pair and auth secret, as pushManager.subscribe makes them */
     record Browser(KeyPair keys, byte[] auth, String endpoint) {
@@ -219,6 +221,36 @@ class PushTest extends PostgresIntegrationTest {
         say(Actor.oro(amani), family.getId(), "Dinner at 7");
         assertThat(publishAndWait(1)).isEmpty();
         hub.close(baraka);
+    }
+
+    /** ORO-SCL-010: the outbox delivers at least once; a push goes at most once per event and device */
+    @Test
+    void anEventHandledAgainPushesNothingTwice() throws Exception {
+        UUID amani = oroUser("amani");
+        UUID baraka = oroUser("baraka");
+        UUID direct = conversations.openDirect(Actor.oro(amani), baraka).getId();
+        acceptPending();
+        subscribe("oro-baraka", browser());
+        say(Actor.oro(amani), direct, "Hello");
+        assertThat(publishAndWait(1)).hasSize(1);
+
+        // replayed (ops/outbox-replay.sh, or a retry after another handler failed): the push is not sent again
+        admin.update("""
+                UPDATE oro_outbox_event SET status = 'pending', next_attempt_at = now(), processed_at = NULL, locked_by = NULL
+                WHERE event_type = 'message.created'""");
+        assertThat(publishAndWait(2)).hasSize(1);
+
+        // a device subscribed after the first time gets it on the replay: it never had it
+        subscribe("oro-baraka", browser());
+        admin.update("""
+                UPDATE oro_outbox_event SET status = 'pending', next_attempt_at = now(), processed_at = NULL, locked_by = NULL
+                WHERE event_type = 'message.created'""");
+        assertThat(publishAndWait(2)).hasSize(2);
+        assertThat(admin.queryForObject("SELECT count(*) FROM oro_push_delivery", Integer.class)).isEqualTo(2);
+
+        // an hour later the records go
+        admin.update("UPDATE oro_push_delivery SET created_at = now() - interval '2 hours'");
+        assertThat(pushHandler.purgeDeliveries()).isEqualTo(2);
     }
 
     @Test
