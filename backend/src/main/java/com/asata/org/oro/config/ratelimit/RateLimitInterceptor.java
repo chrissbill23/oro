@@ -50,6 +50,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             new Rule(HttpMethod.POST, "/conversations/*/attachments", "upload"),
             new Rule(HttpMethod.GET, "/stream", "stream"),
             new Rule(HttpMethod.POST, "/me/erase", "erase"),
+            new Rule(HttpMethod.GET, "/me/export", "export"),
             new Rule(HttpMethod.POST, "/reports", "report"),
             new Rule(HttpMethod.PUT, "/blocks/*", "block"),
             new Rule(HttpMethod.PUT, "/push/subscriptions", "push-subscribe"));

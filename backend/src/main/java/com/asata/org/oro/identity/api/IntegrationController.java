@@ -21,6 +21,7 @@ public class IntegrationController implements IntegrationApi {
     private final OrganizationAccessService organizationAccess;
     private final OrganizationSyncService organizationSync;
     private final com.asata.org.oro.identity.service.ErasureService erasures;
+    private final com.asata.org.oro.identity.service.ExportService exports;
 
     @Override
     public IdentityDTO provision(Product product, String userId) {
@@ -78,5 +79,11 @@ public class IntegrationController implements IntegrationApi {
         if (product != Product.UMOJA) {
             throw new IllegalArgumentException("Only Umoja has organizations");
         }
+    }
+
+    @Override
+    public void export(Product product, String userId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        // the identity first: a 404 before anything is written
+        ExportResponses.write(response, exports.identity(product, userId), exports);
     }
 }

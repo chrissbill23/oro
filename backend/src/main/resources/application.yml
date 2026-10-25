@@ -210,6 +210,8 @@ oro:
       email-to: { per-minute: 1, burst: 3 }
       # a person erasing its data (its password checked)
       erase: { per-minute: 3, burst: 3 }
+      # a person downloading its data: all its messages, read by pages
+      export: { per-minute: 1, burst: 2 }
       report: { per-minute: 10, burst: 10 }
       block: { per-minute: 30, burst: 20 }
       push-subscribe: { per-minute: 10, burst: 10 }

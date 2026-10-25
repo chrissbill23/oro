@@ -24,4 +24,11 @@ public interface MeApi {
     @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
     void erase(@Parameter(hidden = true) Actor actor,
                @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody EraseRequest request);
+
+    @Operation(summary = "Export my data in Oro", description = "Oro's people only: a JSON file of what they wrote and "
+            + "did (their messages, reactions, files' names, conversations, blocks, reports, devices); not the messages "
+            + "of the others. Umoja's people ask their organization")
+    @GetMapping(value = "/me/export", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+    void export(@Parameter(hidden = true) Actor actor, @Parameter(hidden = true) jakarta.servlet.http.HttpServletResponse response)
+            throws java.io.IOException;
 }

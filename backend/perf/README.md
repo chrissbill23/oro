@@ -103,9 +103,9 @@ then held 2 minutes:
 | 1,500 | 116 / 930 / 1,430 ms | 87 / 1,070 / 1,730 ms | 0 | 300 | 2 (saturated) | 4 cores |
 | 2,000 | 1,010 / 2,130 / 3,020 ms | 1,000 / 2,590 / 8,500 ms | 0.3 % | 313 | 2 (saturated) | 4 cores |
 
-- **Capacity of one instance of this size: about 1,000 people active at once** (with 5,000 connected), 300 requests
-  a second at saturation. It breaks between 1,500 and 2,000: the CPUs of Oro saturate, then the requests wait for a
-  connection (10), and after 5 s get 503.
+- **Capacity of one instance of this size, then: about 1,000 people active at once** (with 5,000 connected; 1,500
+  since run 3, below), 300 requests a second at saturation. It breaks between 1,500 and 2,000: the CPUs of Oro
+  saturate, then the requests wait for a connection (10), and after 5 s get 503.
 - **The streams held**: 5,000 open from start to end, no failure, none ended for being slow; the outbox lag stayed
   under 2 s.
 - **A busy group** (run 1: 499 members, all online, 10 messages a second for 12 minutes, about 5,000 stream events a

@@ -18,7 +18,10 @@ the other's users or conversations.
 - Read and delivered positions, unread counts, "Seen", typing and presence.
 - Files: uploaded, then downloaded by the conversation's members only.
 - A live stream per user (Server-Sent Events) for every change.
+- Notifications when away (Web Push): who and where, never the text.
 - Umoja team chats that follow the teams of the organization.
+- In Oro, a stranger's first message is a request; people block and report.
+- Each person can export their data, or have it erased.
 
 ## Repository
 

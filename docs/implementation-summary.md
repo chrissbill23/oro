@@ -18,17 +18,24 @@ Caddy in production ([Deployment](deployment.md)).
   type is checked, photo metadata is removed, and each file is scanned by ClamAV before anyone can download it.
 - A live stream per user (Server-Sent Events): messages, reactions, conversations, typing, reads and presence. A
   client whose stream was cut reads what it missed on its next `hello` (the contract is in the backend README).
-- Web Push notifications when away: who and where, never the text, encrypted for the browser.
+- Web Push notifications when away: who and where, never the text, encrypted for the browser, at most once per
+  message and device. Umoja's web app takes them (a bell on its Messages page).
 - Umoja team chats: one group per team, following its members, with system messages for who joins and leaves.
+- Oro accounts: Oro's people sign up, verify their email, sign in and recover their password with their Asata account
+  (the one of Umoja and Mokili); Oro signs their tokens.
+- A person's data: exported as a JSON file, or erased (their messages become deletions, nothing that stays names
+  them). Oro's people do it themselves; Umoja's people ask their organization, which asks Oro.
 
 ## Security and privacy
 
 - A message carries mentions of members only: no link preview or system event forged by its sender.
 - In Oro, a stranger's first message is a request and a stranger's group an invitation, both accepted or declined;
   people block each other and report messages (a copy kept 90 days).
-- Oro stores no password, email or credential. Each product signs the tokens of its users with its own private key
-  (RS256) and publishes the public ones; Oro checks the signature, the issuer and the audience `oro`, and a token of
-  one product is never accepted as the other's.
+- Oro's own tables hold no password, email or credential. Its accounts are Asata accounts (`asata_user*`, bcrypt),
+  reached through a login of their own that can touch nothing else; sign-in, sign-up and recovery are limited per
+  client address and per mailbox. Each product signs the tokens of its users with its own private key (RS256) and
+  publishes the public ones; Oro checks the signature, the issuer and the audience `oro`, and a token of one product
+  is never accepted as the other's.
 - Every row carries its product, and every reference is a composite foreign key with it, so the database itself keeps
   an Oro user out of a Umoja conversation and the reverse.
 - Umoja tells Oro who belongs to each organization. Losing the access ends the conversations of that organization in
@@ -55,10 +62,12 @@ Caddy in production ([Deployment](deployment.md)).
 - A send locks its conversation, which gives the order without gaps. Concurrent openings of the same direct
   conversation give one.
 - Deleted files and uploads never attached are purged by a job.
-- Backups: the database with pgBackRest (WAL every minute, point-in-time recovery, encrypted), the files with restic.
-  Both have a restore drill that was run.
-- Monitoring: JSON logs, metrics on a management port that is never published, Prometheus and Alertmanager with 18
-  alert rules (failed events, old backups, a full disk, errors, slow sends, ...).
+- Backups: the database with pgBackRest (WAL every minute, point-in-time recovery, encrypted), the files with restic,
+  kept 21 days ([Retention](retention.md)). Every week they check themselves: the latest database backup restored
+  whole into a throwaway container, a tenth of the files' backup verified and 20 files restored and compared.
+- Monitoring: JSON logs, metrics on a management port that is never published, Prometheus and Alertmanager with 20
+  alert rules (failed events, old backups or restore checks, a full disk, errors, slow sends, a stuck erasure, ...),
+  each with its runbook.
 
 ## Operations
 
@@ -73,23 +82,27 @@ Caddy in production ([Deployment](deployment.md)).
 
 ## Code and tests
 
-- 119 source files under `backend/src/main/java/com/asata/org/oro`: identity, conversation, message, attachment
-  (storage, scan, purge), live, outbox, config (security, web, rate limits, metrics, production) and context (the
-  database session).
-- 197 tests in 41 classes. The query plans on 10 million messages and the load test (about 1,500 people active at
-  once on 2 CPUs, with 5,000 connected) are in `backend/perf`., on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- 146 source files under `backend/src/main/java/com/asata/org/oro`: account (Oro's sign-in), identity (with the
+  export and the erasure), conversation, message, attachment (storage, scan, purge), live, outbox, push, safety
+  (requests, blocks, reports), config (security, web, rate limits, metrics, production) and context (the database
+  session).
+- 201 tests in 42 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- Capacity: the query plans on 10 million messages and the load test are in `backend/perf`. One instance on 2 CPUs
+  holds about 1,500 people active at once with 5,000 connected, and breaks at about 2,000; Oro's CPUs are the limit.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
-- Umoja already uses Oro: its frontend has a Messages page, and its backend sends its organizations and teams to Oro
-  after every change and every 10 minutes.
+- Umoja already uses Oro: its frontend has a Messages page (its list follows the live events instead of being read
+  again) and takes the notifications, and its backend sends its organizations and teams to Oro after every change
+  and every 10 minutes.
 
 ## Not done yet
 
 - Phone accounts for Oro (email accounts work: sign-up, verification, sign-in, recovery), and a screen to review the
   reports.
-- A privacy notice (the retention of deleted content is written: [Retention](retention.md)).
-- Who is on call, and the runbooks rehearsed on a staging server ([Runbooks](runbooks.md)).
-- An alert receiver, the off-server backup buckets, and restore drills on a schedule.
+- A privacy notice and the terms for Umoja's customers (the retention is written, [Retention](retention.md), and the
+  export and erasure exist); a screen in Umoja that calls the export and the erasure.
+- Who is on call, and the runbooks rehearsed on a staging server, a recovery in place among them ([Runbooks](runbooks.md)).
+- An alert receiver, the off-server backup buckets, and an SMTP provider for the accounts' emails.
 - Object storage for the files (not needed while they stay on a backed-up volume of one server).
 - Mobile push (Firebase, Apple), and the notifications of an Oro app (Umoja's web app takes them).
 - Several instances: the streams, the presence and the rate limits live in the memory of one.

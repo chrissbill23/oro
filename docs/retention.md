@@ -40,6 +40,15 @@ or Umoja for one of its people (`POST /internal/identities/{userId}/erase`; Umoj
 
 Then the backups hold it for 21 days at most, as any deletion.
 
+## Exporting a person's data
+
+A person gets a copy of its data in Oro as a JSON file: an Oro person itself (`GET /me/export`), or Umoja for one of
+its people (`GET /internal/identities/{userId}/export`; Umoja's people ask their organization). It holds its identity,
+its organizations, its conversations (their names, when it joined and left), every message it sent (a deleted one as a
+deletion, its text gone), its reactions, the names and sizes of the files it sent, the people it blocked, the reports
+it made, and its devices for the notifications. Not the messages of the others (they are theirs; the conversations
+show them) nor the files themselves (in their conversations). Read by pages of 1,000 messages, written as read.
+
 ## Reports
 
 A report (`POST /reports`) keeps a copy of the messages reported (their text, their sender as an internal id), for

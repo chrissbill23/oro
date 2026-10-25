@@ -35,7 +35,9 @@ Two launches:
 - [ ] The retention policy is written: messages, deleted content, files, logs, backups (`ORO-SEC-014`, `ORO-LCH-018`)
 - [ ] Files of deleted messages and abandoned uploads are purged on schedule (`ORO-LCH-006`)
 - [ ] The privacy notice and Umoja's processing terms match what the system does (`ORO-LCH-018`)
-- [ ] All 66 tests and the new ones pass in CI on the release commit (`ORO-LCH-017`)
+- [ ] A person's data can be exported and erased on request, and Umoja's administrators have a way to ask for it
+      (`ORO-LCH-002`, `ORO-LCH-018`)
+- [ ] All the tests (201 today) pass in CI on the release commit (`ORO-LCH-017`)
 
 ## 3. Data recovery
 

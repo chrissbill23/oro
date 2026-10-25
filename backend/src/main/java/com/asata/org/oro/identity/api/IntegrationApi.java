@@ -48,6 +48,12 @@ public interface IntegrationApi {
     @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
     void erase(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId);
 
+    @Operation(summary = "Export the data of an identity", description = "For the organization to answer a request of "
+            + "access: what the person wrote and did in Oro, as JSON (as GET /me/export). 404 when Oro has nothing of it")
+    @GetMapping(value = "/identities/{userId}/export", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+    void export(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId,
+                @Parameter(hidden = true) jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException;
+
     @Operation(summary = "Synchronize an organization (Umoja)",
             description = "Its members (the others lose their access and leave its conversations) and the chats of its teams "
                     + "(their names and members); idempotent, sent on every change and periodically. One at a time per "

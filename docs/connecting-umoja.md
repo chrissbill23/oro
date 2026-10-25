@@ -13,6 +13,9 @@ Umoja (`../umoja`) uses Oro for its Messages page:
   the service worker `/oro-sw.js` shows them ("Design", "New message from Amani": never the text) and opens the
   conversation on a click; `core/push/push.service.ts` subscribes the browser with Oro's key and gives the
   subscription to Oro, and forgets it at sign-out, so that the next person on the browser never gets them.
+- Its backend answers its customers' requests about a person's data in Oro: an export
+  (`GET /oro/internal/identities/{userId}/export`, a JSON file) or an erasure
+  (`POST /oro/internal/identities/{userId}/erase`), with its integration key. Nothing in Umoja calls them yet.
 
 Without Umoja's public keys, Umoja users cannot call Oro; without the integration key, their organizations are not
 synchronized.
