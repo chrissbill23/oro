@@ -141,6 +141,12 @@ public class HttpExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorDTO> internal(Exception e, HttpServletRequest request) {
+        // the client left before its answer was written (it gave up, a timeout of its own): nothing to answer, and
+        // nothing wrong in Oro; at ERROR an overload would also fire the alert of the errors (OroErrorsLogged)
+        if (clientGone(e)) {
+            log.debug("client gone before its answer on {}", request.getRequestURI());
+            return null;
+        }
         // no connection free within its timeout (Oro saturated): busy, not broken; the client retries. A rule of the
         // database on who may do what (insufficient_privilege): refused, not broken
         for (Throwable cause = e; cause != null; cause = cause.getCause()) {
@@ -168,6 +174,21 @@ public class HttpExceptionHandler {
         return ResponseEntity.status(status).body(new ErrorDTO(OffsetDateTime.now(),
                 requestId == null ? "" : requestId.toString(), request.getRequestURI(), status.value(),
                 status.getReasonPhrase(), message, messages));
+    }
+
+    /** a write to a client that hung up: Tomcat's abort, or a broken pipe, a reset connection under the write */
+    static boolean clientGone(Throwable e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.apache.catalina.connector.ClientAbortException
+                    || cause instanceof AsyncRequestNotUsableException) {
+                return true;
+            }
+            if (cause instanceof java.io.IOException && cause.getMessage() != null
+                    && (cause.getMessage().contains("Broken pipe") || cause.getMessage().contains("Connection reset"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean acceptsJson(HttpServletRequest request) {
