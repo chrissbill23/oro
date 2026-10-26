@@ -59,6 +59,18 @@ import java.util.regex.Pattern;
 @EnableConfigurationProperties(SecurityProperties.class)
 public class SecurityConfig {
 
+    /**
+     * no observation of Spring Security's filters, authentications and authorizations: one a filter of every request,
+     * about 5 % of the CPU at saturation (backend/perf, Where the CPU goes), and no alert reads them; the requests stay
+     * counted and timed (http_server_requests). oro.monitoring.security-observations: true brings them back (a diagnosis)
+     */
+    @Bean
+    org.springframework.security.config.observation.SecurityObservationSettings securityObservationSettings(
+            @org.springframework.beans.factory.annotation.Value("${oro.monitoring.security-observations:false}") boolean on) {
+        return on ? org.springframework.security.config.observation.SecurityObservationSettings.withDefaults().build()
+                : org.springframework.security.config.observation.SecurityObservationSettings.noObservations();
+    }
+
     @Bean
     @Order(1)
     SecurityFilterChain integrationSecurityFilterChain(HttpSecurity http, SecurityProperties properties,

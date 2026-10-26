@@ -367,7 +367,7 @@ What would give the most, from these numbers (not done: measure each):
    system pool of every request (the identity and the access as `oro_system`, two transactions a request): a cache of
    a few seconds would take them off the pool and the database (done since: `ActorCache`, its gain not measured yet).
 2. The Micrometer observations of Spring Security (about 5 %): keep the metrics of the requests, not one observation a
-   filter (for example `management.observations.enable.spring.security: false`, to measure).
+   filter (done since: off by default, `ORO_SECURITY_OBSERVATIONS`; its gain not measured yet).
 3. The user ids of a response read through Hibernate (`externalIds`, 5 %): one query, or kept with the identity.
 4. Each presence and each new stream goes through every stream of the instance (`LiveHub.presence`): the streams
    indexed by organization.

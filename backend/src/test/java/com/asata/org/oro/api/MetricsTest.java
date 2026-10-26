@@ -80,6 +80,8 @@ class MetricsTest extends PostgresIntegrationTest {
         assertThat(scrape).containsPattern("oro_messages_send_seconds_count\\{[^}]*outcome=\"created\"[^}]*\\} [1-9]")
                 .containsPattern("oro_conversation_lock_seconds_count\\{[^}]*\\} [1-9]")
                 .containsPattern("oro_rate_limit_refused_total\\{[^}]*kind=\"create-group\"[^}]*\\} [1-9]")
-                .containsPattern("http_server_requests_seconds_count\\{[^}]*status=\"429\"[^}]*uri=\"/conversations/groups\"");
+                .containsPattern("http_server_requests_seconds_count\\{[^}]*status=\"429\"[^}]*uri=\"/conversations/groups\"")
+                // Spring Security's own observations are off (a cost on every request, read by nothing)
+                .doesNotContain("spring_security_filterchains", "spring_security_authorizations", "spring_security_authentications");
     }
 }

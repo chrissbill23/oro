@@ -275,6 +275,9 @@ oro:
     local-min-free-bytes: ${ORO_ATTACHMENTS_MIN_FREE_BYTES:1073741824}
   # what the metrics read (OroMetrics): the age of the last backup of the files, from the file the backup writes
   monitoring:
+    # Spring Security's observations of its filters, authentications and authorizations: off (about 5 % of the CPU at
+    # saturation, read by no alert); true for a diagnosis. The requests are counted and timed either way
+    security-observations: ${ORO_SECURITY_OBSERVATIONS:false}
     files-backup-status: ${ORO_FILES_BACKUP_STATUS:}
     # the last success of the weekly restore checks (files-backup, 1_ASATA_DATABASE's restore-check)
     files-check-status: ${ORO_FILES_CHECK_STATUS:}
