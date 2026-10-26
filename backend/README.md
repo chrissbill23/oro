@@ -125,7 +125,8 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `ErasureTest` | An erasure by Umoja and by the person: its messages deletions, its reactions and uploads gone, the mentions and system messages anonymous and not marked edited, nothing names it; idempotent; the person comes back as someone new; the flag of the erasure hides no user's edit |
 | `PasswordResetTest` | A reset by link ends every session (Umoja's too), unlocks and verifies; the same answer for an unknown address; a verification link resets nothing; the limits per address and per recipient |
 | `SignUpTest` | Sign-up, the address verified before sign-in, the same answer and a notice for a known address, a taken username, the links single use and for their address only, a new link only when awaited |
-| `AccountTest` | Sign-in by email or username, the token on the API, one answer for every failure, the lock after 5 wrong passwords, rotation and a stolen session, sign-out, Umoja's tokens refused, the logins apart |
+| `AccountTest` | Sign-in by email or username, the token on the API, one answer for every failure, the lock after 5 wrong passwords, rotation and a stolen session, sign-out, Umoja's tokens refused, the logins apart; an app keeps its refresh token itself (native mode: in the body, never a cookie; a browser never reads one from a body) |
+| `PeopleTest` | `GET /people` names the caller and the people of its conversations (left or not), never a stranger nor a non-UUID id; 200 at most; refused to Umoja's people |
 | `OutboxTest` | Publishing; concurrent workers never claim the same event; backoff, then `failed`, with no exception message stored; expired leases are taken over and the stale worker cannot complete; retention; `ops/outbox-replay.sh` (list, by id, all; anything but an id refused) |
 | `ApiTest` | The HTTP chain with tokens really signed by each product (RS256, `TestTokens`): another key (even under a published `kid`), the audience, HS256 with the former shared secret, unsigned tokens, unknown issuer, expiry, no expiry, a subject that is not an account id, not-before, clock skew; no API description by default; the organization header against the accesses; integration keys per product; an end-to-end Oro conversation; validation; members and history; deactivation |
 | `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; a late snapshot never brings back a revoked access, and concurrent synchronizations end as the newest; the list (last message, the other one, unread); mute; rename; reactions (one emoji, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
@@ -194,6 +195,7 @@ carries an `x-request-id` header.
 | `GET /doc`, `GET /doc/api` | Swagger UI, OpenAPI (only with `ORO_API_DOCS=true`) |
 | `GET /me` | The caller: identity, product, user ID, organization |
 | `POST /me/erase` `{password}` | Oro's people: their data in Oro erased ([Retention](../docs/retention.md), Erasing a person), they are signed out of Oro; 403 for Umoja's people (their organization asks) |
+| `GET /people?userIds=` | Oro's people: the names (given name, surname, username) of the caller and of the people of its conversations, 200 ids at most; anyone else, a non-UUID id, is left out; 403 for Umoja's people (Umoja names its own) |
 | `GET /me/export` | Oro's people: their data in Oro as a JSON file ([Retention](../docs/retention.md), Exporting a person's data); 403 for Umoja's people (their organization asks); 2 a minute |
 | `GET /conversations` | The caller's active conversations in its context, latest first, with unread counts |
 | `POST /conversations/direct` `{userId}` | The direct conversation with a user (created the first time; concurrent calls give one) |
@@ -242,17 +244,19 @@ wrong passwords). Oro signs their access tokens itself (`account/`):
 | `POST /auth/verify-email/resend` `{email}` | A new link if the address waits for its verification; 202 whatever the address |
 | `POST /auth/password/forgot` `{email}` | A link to choose a new password (1 h); 202 whatever the address |
 | `POST /auth/password/reset` `{token, password}` | The new password: the account unlocked, its address verified, every session of it closed in every product, a notice sent |
-| `POST /auth/login` `{login, password, remember}` | The email or the username and the password: an access token (15 min) in the body, the refresh token in a cookie |
-| `POST /auth/refresh` | A new access token from the cookie, which is replaced |
-| `POST /auth/logout` | The session closed, the cookie cleared |
+| `POST /auth/login` `{login, password, remember}` | The email or the username and the password: an access token (15 min) in the body, the refresh token in a cookie; for the apps (`X-Oro-Client: native`), the refresh token in the body (`refreshToken`, `refreshExpiresIn`) and no cookie |
+| `POST /auth/refresh` | A new access token from the cookie, which is replaced; the apps send `{refreshToken}` with `X-Oro-Client: native` and get the new one in the body |
+| `POST /auth/logout` | The session closed, the cookie cleared; the apps send `{refreshToken}` with `X-Oro-Client: native` |
 | `GET /.well-known/jwks.json` | The public keys of Oro's tokens |
 
 - **Tokens**: RS256 with Oro's key (`ORO_ACCOUNTS_SIGNING_KEY`, its kid), issuer `oro`, audience `oro`, the Asata
   account's id as subject, the session in `sid`. Oro checks them as the tokens of the product ORO, with its own public
   keys, in the process: the account id is the identity's external id.
 - **Sessions**: the refresh token in an HttpOnly cookie, `SameSite=Strict`, for `/oro/auth` only, Secure in
-  production; 12 hours, or 30 days with `remember`. Stored in `asata_user_refresh_token`, issuer `oro`, as the
-  SHA-256 of `oro:` + the token: Umoja and Mokili look tokens up by the SHA-256 of the token alone, so they never find
+  production; 12 hours, or 30 days with `remember`. The apps (`mobile/`) have no cookie jar: with `X-Oro-Client: native`
+  the refresh token comes in the body and the app keeps it in the phone's secure storage (Keychain, Keystore); a
+  browser never gets it in a body, and a body token is read only in native mode. Stored in
+  `asata_user_refresh_token`, issuer `oro`, as the SHA-256 of `oro:` + the token: Umoja and Mokili look tokens up by the SHA-256 of the token alone, so they never find
   Oro's, nor Oro theirs. Replaced at each use; a replaced token used again (stolen) ends the whole session.
 - **Failures**: the same answer for an unknown login, a wrong password, a locked or a disabled account, in the same
   time (a dummy hash). The logs name the account by its id, never the login typed. The right password of an address
@@ -264,8 +268,9 @@ wrong passwords). Oro signs their access tokens itself (`account/`):
   the Oro app (`ORO_ACCOUNTS_LINK_BASE`), which posts the token back; the token is in the link only, its SHA-256 in
   `asata_user_email_token`. The SMTP server away never makes Oro down.
 - **Logins**: the accounts work through their own database login, `oro_auth`, which can take `oro_account` only:
-  some columns of `asata_user`, `asata_user_credential` and `asata_user_refresh_token`, nothing of the messaging. The
-  logins of the messaging never read a password (`AccountTest`).
+  some columns of `asata_user`, `asata_user_credential` and `asata_user_refresh_token`, the names of
+  `asata_user_personal_info` (`GET /people`), nothing of the messaging. The logins of the messaging never read a
+  password (`AccountTest`).
 - **Not yet**: phone accounts (an SMS provider to choose, `asata_user` to allow an account without an email).
 
 ## Who can reach whom (Oro)

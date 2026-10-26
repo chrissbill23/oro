@@ -37,4 +37,31 @@ public class AccountNames {
         });
         return found.get("name");
     }
+
+    /** an account's name as the apps show it */
+    public record Name(UUID userId, String givenName, String surname, String username) {
+    }
+
+    /** the names of these accounts (the unknown ones left out) */
+    public Map<UUID, Name> names(java.util.Collection<UUID> ids) {
+        Map<UUID, Name> found = new HashMap<>();
+        if (ids.isEmpty()) {
+            return found;
+        }
+        db.inTransaction(jdbc -> {
+            jdbc.query((java.sql.Connection connection) -> {
+                java.sql.PreparedStatement statement = connection.prepareStatement("""
+                        SELECT u.id, u.username, p.given_name, p.surname
+                        FROM asata_user u LEFT JOIN asata_user_personal_info p ON p.user_id = u.id
+                        WHERE u.id = ANY(?) AND u.deleted_at IS NULL""");
+                statement.setArray(1, connection.createArrayOf("uuid", ids.toArray(UUID[]::new)));
+                return statement;
+            }, rs -> {
+                UUID id = rs.getObject("id", UUID.class);
+                found.put(id, new Name(id, rs.getString("given_name"), rs.getString("surname"), rs.getString("username")));
+            });
+            return null;
+        });
+        return found;
+    }
 }

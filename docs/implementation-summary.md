@@ -88,17 +88,20 @@ Caddy in production ([Deployment](deployment.md)).
 
 ## Code and tests
 
-- 148 source files under `backend/src/main/java/com/asata/org/oro`: account (Oro's sign-in), identity (with the
+- 151 source files under `backend/src/main/java/com/asata/org/oro`: account (Oro's sign-in), identity (with the
   export and the erasure), conversation, message, attachment (storage, scan, purge), live, outbox, push, safety
   (requests, blocks, reports), config (security, web, rate limits, metrics, production) and context (the database
   session).
-- 219 tests in 48 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- 223 tests in 49 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - Capacity (`backend/perf`, measured on one laptop with ClamAV on and 5,000 people connected): one instance on 2 CPUs
   holds about 1,500 people active at once (2,000 with messages 4 s late), on 4 CPUs about 3,000; at 2 CPUs its CPUs
   are the limit, at 4 its database pools, now sized from the CPUs (20 and 10 on 4, as measured). Whether that is 3
   times the peak is not known: no expected peak is given.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
+- The Oro app (`mobile/`, Expo, iOS and Android) runs on the API: accounts, chats, conversations, requests, safety,
+  the stream, export and erasure, light and dark. It keeps its refresh token in the phone's secure storage
+  (`X-Oro-Client: native`) and names people with `GET /people`.
 - Umoja already uses Oro: its frontend has a Messages page (its list follows the live events instead of being read
   again) and takes the notifications, and its backend sends its organizations and teams to Oro after every change
   and every 10 minutes.
@@ -112,7 +115,9 @@ Caddy in production ([Deployment](deployment.md)).
 - Who is on call, and the runbooks rehearsed on a staging server, a recovery in place among them ([Runbooks](runbooks.md)).
 - An alert receiver, the off-server backup buckets, and an SMTP provider for the accounts' emails.
 - Object storage for the files (not needed while they stay on a backed-up volume of one server).
-- Mobile push (Firebase, Apple), and the notifications of an Oro app (Umoja's web app takes them).
+- Mobile push (Firebase, Apple), and the notifications of the Oro app (Umoja's web app takes them).
+- For the Oro app: finding a person, profile and group photos, listing sessions, changing a member's role, email links
+  that open the app.
 - Several instances: the streams, the presence and the rate limits live in the memory of one.
 - Moderation by the admins, edit history and threads.
 

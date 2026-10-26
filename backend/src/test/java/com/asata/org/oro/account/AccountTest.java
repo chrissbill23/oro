@@ -130,6 +130,36 @@ class AccountTest extends PostgresIntegrationTest {
         refresh(second).andExpect(status().isUnauthorized());
     }
 
+    /** the apps of the phones: the refresh token in the body, never a cookie; given back in the body */
+    @Test
+    void aNativeAppKeepsItsRefreshTokenItself() throws Exception {
+        account("amani", true);
+        MvcResult signedIn = mvc.perform(post("/auth/login").header("X-Oro-Client", "native").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"login\":\"amani\",\"password\":\"%s\",\"remember\":true}".formatted(PASSWORD)))
+                .andExpect(status().isOk()).andReturn();
+        assertThat(signedIn.getResponse().getHeader(HttpHeaders.SET_COOKIE)).isNull();
+        String token = com.jayway.jsonpath.JsonPath.read(signedIn.getResponse().getContentAsString(), "$.refreshToken");
+        assertThat(token).isNotBlank();
+        assertThat((Integer) com.jayway.jsonpath.JsonPath.read(signedIn.getResponse().getContentAsString(), "$.refreshExpiresIn")).isPositive();
+
+        // refreshed with the token in the body: a new one, in the body
+        String refreshed = mvc.perform(post("/auth/refresh").header("X-Oro-Client", "native").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"%s\"}".formatted(token)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String next = com.jayway.jsonpath.JsonPath.read(refreshed, "$.refreshToken");
+        assertThat(next).isNotEqualTo(token);
+        // a browser's refresh never reads a token from the body
+        mvc.perform(post("/auth/refresh").contentType(MediaType.APPLICATION_JSON).content("{\"refreshToken\":\"%s\"}".formatted(next)))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(post("/auth/logout").header("X-Oro-Client", "native").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"%s\"}".formatted(next)))
+                .andExpect(status().isNoContent());
+        mvc.perform(post("/auth/refresh").header("X-Oro-Client", "native").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"%s\"}".formatted(next)))
+                .andExpect(status().isUnauthorized());
+    }
+
     @Test
     void signingOutClosesTheSession() throws Exception {
         account("amani", true);

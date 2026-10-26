@@ -28,6 +28,7 @@ the other's users or conversations.
 | Path | What |
 |---|---|
 | [`backend/`](backend) | The service: Spring Boot 4.1, Java 25, PostgreSQL 17. **Its [README](backend/README.md) has the full documentation**: API, authentication, schema, security, operations |
+| [`mobile/`](mobile) | The Oro app for iOS and Android: Expo, React Native, TypeScript. Its [README](mobile/README.md) says how to run it |
 | [`docs/`](docs) | Guides: quick start, connecting Umoja, implementation summary |
 | [`docker-compose.yml`](docker-compose.yml) | Runs the backend, reading its settings from `backend/.env.local` |
 

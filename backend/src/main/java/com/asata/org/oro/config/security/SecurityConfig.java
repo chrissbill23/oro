@@ -214,8 +214,9 @@ public class SecurityConfig {
         CorsConfiguration cors = new CorsConfiguration();
         cors.setAllowedOrigins(properties.getCorsAllowedOrigins());
         cors.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        cors.setAllowedHeaders(List.of("x-request-id", "x-organization-id", "Content-Type", "Authorization"));
-        cors.setExposedHeaders(List.of("x-request-id"));
+        // X-Oro-Client: the apps (their refresh token in the body); Retry-After: when to come back (429, 503)
+        cors.setAllowedHeaders(List.of("x-request-id", "x-organization-id", "Content-Type", "Authorization", "X-Oro-Client"));
+        cors.setExposedHeaders(List.of("x-request-id", "Retry-After"));
         cors.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cors);

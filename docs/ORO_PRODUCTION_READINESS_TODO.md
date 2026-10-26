@@ -785,6 +785,7 @@ transaction-local and tested; the product isolation by composite foreign keys is
 
 - [ ] `ORO-FEA-001` — P3 — Push notifications
   - Partly done (2026-10-24): decided: Web Push first (mobile later), who and where never the text, every message when away. Oro's side is done: subscriptions (`oro_push_subscription`, known push services only), the encryption (RFC 8291, the JDK only, checked against the RFC's example) and VAPID (RFC 8292), `PushOutboxEventHandler` (away, not the sender, not muted, not pending; one topic per conversation), keys as secrets, `ProductionChecks` (`WebPushCryptoTest`, `PushTest` with a push service of the test). Then Umoja's frontend: the bell of the Messages page, the service worker `/oro-sw.js`, the subscription forgotten at sign-out (`push.service.spec.ts`, 5). Left: the Oro app's when it exists; Firebase and Apple for the mobile apps; a test in a real browser against a real push service.
+  - Then (2026-10-26): the Oro app exists (`mobile/`, Expo); it has no push yet: Notifications shows the setting with "Needs backend". Left for it: device tokens (Expo, or FCM and APNs directly) and their handler.
   - Current state: Missing
   - Evidence: `OutboxEventHandler` is the extension point; mute exists (`ConversationService.mute`).
   - Action: device registration per identity, Web Push (VAPID) first, FCM and APNs for mobile apps; an outbox
@@ -862,6 +863,24 @@ transaction-local and tested; the product isolation by composite foreign keys is
   - Estimate: 3 to 5 d
   - Launch impact: Post-launch
   - Verification: tests
+
+- [ ] `ORO-FEA-008` — P3 — What the Oro app needs from the backend
+  - Partly done (2026-10-26): the app (`mobile/`, Expo SDK 58, iOS and Android) runs on Oro's API: sign-up, sign-in,
+    recovery, chats and search, direct and group conversations (send, edit, delete, react, typing, seen, files),
+    the stream with its catch-up, requests, person and group info, block and report, export and erasure, light and
+    dark. For it: `X-Oro-Client: native` (the refresh token in the body, kept in the phone's secure storage) and
+    `GET /people` (the names of the people of one's conversations). Tested: `AccountTest`, `PeopleTest`; the app's
+    logic in Jest (`mobile/__tests__`), its screens checked in a browser against the dev stack.
+  - Current state: Partially implemented
+  - Evidence: `mobile/README.md`; the screens marked "Needs backend".
+  - Action: finding a person (by username, a QR code); profile and group photos (`ORO-FEA-006`); mobile push
+    (`ORO-FEA-001`); listing and ending one's sessions (exists in Umoja); changing a member's role; the email links
+    opening the app (`ORO_ACCOUNTS_LINK_BASE` to the app's scheme or universal links); the privacy notice.
+  - Acceptance criteria: no screen of the app marked "Needs backend"
+  - Dependencies: `ORO-FEA-001`, `ORO-FEA-006`
+  - Estimate: 5 to 8 d
+  - Launch impact: Required for the Oro launch (finding a person, push)
+  - Verification: HTTP tests; the app on real phones
 
 ## P4: Testing and engineering quality
 

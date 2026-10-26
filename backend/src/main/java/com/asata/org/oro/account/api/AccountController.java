@@ -26,15 +26,27 @@ import java.util.UUID;
 /**
  * The sign-in of Oro (its people's Asata accounts): the access token in the body, the refresh token in an HttpOnly
  * cookie only for /oro/auth (SameSite Strict: never sent by another site). Public routes, no token.
+ * <p>
+ * The apps of the phones (X-Oro-Client: native) keep the refresh token in the device's secure storage instead: they
+ * get it in the body, never as a cookie, and give it back in the body to refresh and sign out. Nothing is sent by the
+ * device on its own (no cookie), so nothing can be forged by another site.
  */
 @Tag(name = "Accounts")
 @RestController
 @RequiredArgsConstructor
 public class AccountController {
 
+    /** the header of the apps of the phones: their refresh token in the body */
+    static final String CLIENT_HEADER = "X-Oro-Client";
+    static final String NATIVE = "native";
+
     private final AccountService accounts;
     private final AccountProperties properties;
     private final AccountKeys keys;
+
+    /** the refresh token of a native app, in the body of a refresh or a sign-out */
+    public record RefreshRequest(String refreshToken) {
+    }
 
     /** remember: optional, false by default */
     public record LoginRequest(@NotNull String login, @NotNull String password, Boolean remember) {
@@ -96,8 +108,10 @@ public class AccountController {
         accounts.resetPassword(request.token(), request.password());
     }
 
+    /** refreshToken, refreshExpiresIn: for a native app only (absent for a browser: its cookie) */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     public record SignedInDTO(String accessToken, String tokenType, long expiresIn, UUID userId, String username,
-                              boolean mustChangePassword) {
+                              boolean mustChangePassword, String refreshToken, Long refreshExpiresIn) {
     }
 
     @Operation(summary = "Sign in", description = "With the email or the username of an Asata account and its password; "
@@ -108,18 +122,32 @@ public class AccountController {
                 request, response);
     }
 
-    @Operation(summary = "A new access token", description = "From the refresh cookie, which is replaced")
+    @Operation(summary = "A new access token", description = "From the refresh cookie, which is replaced; a native app "
+            + "(X-Oro-Client: native) gives its refresh token in the body and gets the new one in the body")
     @PostMapping("/auth/refresh")
-    public SignedInDTO refresh(HttpServletRequest request, HttpServletResponse response) {
-        return signedIn(accounts.refresh(cookie(request), request.getHeader(HttpHeaders.USER_AGENT)), request, response);
+    public SignedInDTO refresh(@RequestBody(required = false) RefreshRequest body, HttpServletRequest request,
+                               HttpServletResponse response) {
+        return signedIn(accounts.refresh(refreshToken(body, request), request.getHeader(HttpHeaders.USER_AGENT)), request, response);
     }
 
-    @Operation(summary = "Sign out", description = "Closes the session of the refresh cookie")
+    @Operation(summary = "Sign out", description = "Closes the session of the refresh cookie, or of the refresh token in "
+            + "the body (a native app)")
     @PostMapping("/auth/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void logout(HttpServletRequest request, HttpServletResponse response) {
-        accounts.logout(cookie(request));
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie(request, "", Duration.ZERO).toString());
+    public void logout(@RequestBody(required = false) RefreshRequest body, HttpServletRequest request, HttpServletResponse response) {
+        accounts.logout(refreshToken(body, request));
+        if (!isNative(request)) {
+            response.addHeader(HttpHeaders.SET_COOKIE, cookie(request, "", Duration.ZERO).toString());
+        }
+    }
+
+    private static boolean isNative(HttpServletRequest request) {
+        return NATIVE.equalsIgnoreCase(request.getHeader(CLIENT_HEADER));
+    }
+
+    /** a native app's from the body, a browser's from its cookie: never one in place of the other */
+    private String refreshToken(RefreshRequest body, HttpServletRequest request) {
+        return isNative(request) ? (body == null ? null : body.refreshToken()) : cookie(request);
     }
 
     @Operation(summary = "The public keys of Oro's tokens", description = "A JWK set: who checks Oro's access tokens")
@@ -130,10 +158,14 @@ public class AccountController {
 
     private SignedInDTO signedIn(AccountService.SignedIn signedIn, HttpServletRequest request, HttpServletResponse response) {
         AccountSessions.Session session = signedIn.session();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie(request, session.token(), session.remember() ? session.ttl() : null).toString());
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+        boolean nativeApp = isNative(request);
+        if (!nativeApp) {
+            response.addHeader(HttpHeaders.SET_COOKIE, cookie(request, session.token(), session.remember() ? session.ttl() : null).toString());
+        }
         return new SignedInDTO(signedIn.accessToken().value(), "Bearer", signedIn.accessToken().expiresInSeconds(),
-                signedIn.userId(), signedIn.username(), signedIn.mustChangePassword());
+                signedIn.userId(), signedIn.username(), signedIn.mustChangePassword(),
+                nativeApp ? session.token() : null, nativeApp ? session.ttl().toSeconds() : null);
     }
 
     private String cookie(HttpServletRequest request) {
