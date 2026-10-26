@@ -132,12 +132,15 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 - **Revisit**: when streams pass a few thousand per organization, or a reconnection of everyone shows in the CPU:
   index the streams by organization.
 
-### Every request checks its identity and access as `oro_system`
+### The identity and the access of a request are cached in the instance
 
-- **Today**: `ActorResolver` runs two system transactions per request (the identity, the organization access) on the
-  system pool of 5, shared with the outbox and the scans.
-- **Risk**: at 4 CPUs and 3,000 people the system pool waits (up to 43 requests); in the CPU profile about 3 %.
-- **Revisit**: first a larger pool (measured: 10 helps); then a cache of a few seconds, revoked with the access.
+- **Today** (since 2026-10-26): `ActorResolver` checks them as `oro_system` (two system transactions) only when they
+  are not in `ActorCache` (5 s, the yes only); what takes them away through Oro forgets them with its commit.
+- **Why**: at 4 CPUs and 3,000 people the system pool waited (up to 43 requests); in the CPU profile about 3 %.
+- **Risk**: a change made outside Oro (SQL) counts up to 5 s late; a second instance would keep its own cache, and an
+  eviction on one would not reach the other.
+- **Revisit**: with `ORO-SCL-006` (several instances: the evictions on the shared bus); the gain is not measured yet
+  (the machine was shared by another load test).
 
 ### A queue and a writer per stream
 

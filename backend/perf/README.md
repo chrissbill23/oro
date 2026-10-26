@@ -363,9 +363,9 @@ No single hot spot: the most of any one frame is 2.6 %. In the requests:
 
 What would give the most, from these numbers (not done: measure each):
 
-1. At 4 CPUs, the pools before anything: 20 and 10 halve the p95 at 3,000 (above). Then the system pool of every
-   request (the identity and the access as `oro_system`, two transactions a request): a cache of a few seconds would
-   take them off the pool and the database.
+1. At 4 CPUs, the pools before anything: 20 and 10 halve the p95 at 3,000 (above; done since: `PoolSizes`). Then the
+   system pool of every request (the identity and the access as `oro_system`, two transactions a request): a cache of
+   a few seconds would take them off the pool and the database (done since: `ActorCache`, its gain not measured yet).
 2. The Micrometer observations of Spring Security (about 5 %): keep the metrics of the requests, not one observation a
    filter (for example `management.observations.enable.spring.security: false`, to measure).
 3. The user ids of a response read through Hibernate (`externalIds`, 5 %): one query, or kept with the identity.

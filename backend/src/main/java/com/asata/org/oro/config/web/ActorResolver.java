@@ -36,6 +36,7 @@ public class ActorResolver implements HandlerMethodArgumentResolver {
     private final SecurityProperties properties;
     private final IdentityService identities;
     private final OrganizationAccessService organizationAccess;
+    private final ActorCache cache;
 
     @Override
     public boolean supportsParameter(MethodParameter parameter) {
@@ -51,7 +52,13 @@ public class ActorResolver implements HandlerMethodArgumentResolver {
         }
         Product product = properties.productOfIssuer(token.getToken().getClaimAsString("iss"))
                 .orElseThrow(() -> new Unauthorized("Authentication required"));
-        UUID identityId = identities.resolveOrProvision(product, token.getToken().getSubject());
+        // the identity and the access, from the cache when they were read a few seconds ago (ActorCache)
+        String subject = token.getToken().getSubject();
+        UUID identityId = cache.identity(product, subject);
+        if (identityId == null) {
+            identityId = identities.resolveOrProvision(product, subject);
+            cache.putIdentity(product, subject, identityId);
+        }
         String header = request.getHeader(ORGANIZATION_HEADER);
         if (product == Product.ORO) {
             if (header != null) {
@@ -63,8 +70,11 @@ public class ActorResolver implements HandlerMethodArgumentResolver {
             throw new IllegalArgumentException("A Umoja request names its organization in " + ORGANIZATION_HEADER);
         }
         UUID organizationId = UUID.fromString(header.strip());
-        if (!organizationAccess.isGranted(identityId, organizationId)) {
-            throw new Forbidden("No access to this organization");
+        if (!cache.granted(identityId, organizationId)) {
+            if (!organizationAccess.isGranted(identityId, organizationId)) {
+                throw new Forbidden("No access to this organization");
+            }
+            cache.putGranted(identityId, organizationId);
         }
         return Actor.umoja(identityId, organizationId);
     }

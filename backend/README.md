@@ -79,6 +79,7 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | `ORO_FILES_BACKUP_PASSWORD` | none | The passphrase of the backups of the files (restic); unset: no backup. Lost, the backups are lost with it |
 | `ORO_FILES_BACKUP_REPOSITORY`, `ORO_FILES_BACKUP_S3_KEY`, `ORO_FILES_BACKUP_S3_SECRET` | a volume | Where the backups of the files go: `s3:<endpoint>/<bucket>/oro-files` and its keys in production |
 | `SPRING_PROFILES_ACTIVE` | none | `production`: the secrets from `/run/secrets` (one file per setting), and a refusal to start on any setting of development (`ProductionChecks`); see `docs/deployment.md` |
+| `ORO_ACTOR_CACHE_TTL` | `PT5S` | How long a request's identity and organization access are kept (only when allowed); forgotten at once when taken away through Oro, at most this late otherwise; `PT0S`: never kept |
 | `ORO_DB_POOL_SIZE`, `ORO_WORKER_DB_POOL_SIZE` | from the CPUs | The connections of the API and of the system. Unset: 5 a CPU (10 to 20) and 2.5 a CPU (5 to 10), as measured: 10 and 5 on 2 CPUs, 20 and 10 on 4 ([the sizes of the pools](perf/README.md#the-sizes-of-the-pools)); keep the sum of every service under PostgreSQL's `max_connections` (100) |
 | `ORO_MANAGEMENT_PORT` | `9082` | The actuator (health, `/actuator/prometheus`), never published: Prometheus reads it on the private network |
 | `ORO_LOG_FORMAT` | `ecs` here | The logs as JSON (Elastic Common Schema), the request id in each line; unset outside Docker: plain lines |
@@ -542,6 +543,12 @@ by another system. Instead:
 The access list is only as fresh as the feed. An access revoked in Umoja keeps working in Oro until the push arrives (or
 the next reconciliation runs), so the push should happen in the same operation that removes the membership in Umoja. A
 short-lived organization claim in the Umoja tokens would close that window.
+
+Every request checks its identity and its organization access as `oro_system`; both are kept 5 s
+(`ActorCache`, `ORO_ACTOR_CACHE_TTL`), the yes only. What takes them away through Oro (a revocation, a
+synchronization without the person, a suspension, a deactivation, an erasure) forgets them with its commit, as it
+closes the streams: the next request is refused (`ActorCacheIntegrationTest`). Changed any other way (SQL), the check of
+the streams every 30 s forgets them, and nothing lasts longer than the 5 s.
 
 ### Direct conversations
 

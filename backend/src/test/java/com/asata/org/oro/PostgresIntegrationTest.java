@@ -122,6 +122,8 @@ public abstract class PostgresIntegrationTest {
     @Autowired
     protected com.asata.org.oro.config.ratelimit.RateLimiter rateLimiter;
     @Autowired
+    private com.asata.org.oro.config.web.ActorCache actorCache;
+    @Autowired
     protected DbSession session;
     /** the JdbcTemplate of the API: oro_api, in the transactions of {@link #tx} */
     @Autowired
@@ -141,6 +143,8 @@ public abstract class PostgresIntegrationTest {
         mailer.reset();
         // the limits of the users count again: a test is not limited by the requests of the others
         rateLimiter.reset();
+        // the identities were truncated: none of them is cached any more
+        actorCache.clear();
     }
 
     /**

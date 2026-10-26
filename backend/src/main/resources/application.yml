@@ -163,6 +163,9 @@ oro:
     mail-from: ${ORO_ACCOUNTS_MAIL_FROM:Oro <no-reply@oro.localhost>}
     verify-ttl: 24h
   security:
+    # how long a request's identity and organization access are kept (ActorCache): forgotten at once when taken away
+    # through Oro; changed another way (SQL), at most this late. 0: never kept
+    actor-cache-ttl: ${ORO_ACTOR_CACHE_TTL:PT5S}
     cors-allowed-origins: ${ORO_CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:4201}
     products:
       # integration-keys: the keys of each product's trusted integration (/internal), as name:sha256 (the SHA-256 of the

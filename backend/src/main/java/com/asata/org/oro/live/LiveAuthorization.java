@@ -24,7 +24,8 @@ import java.util.UUID;
  * changed them (a trigger, another instance, a script).</li>
  * </ul>
  * Its user is then offline for the others: a revoked user neither hears nor shows in the presence of its former
- * organization.
+ * organization. The same moments forget what ActorCache keeps of the identity or of the access, so that its next
+ * request is refused too.
  */
 @Slf4j
 @Component
@@ -33,15 +34,25 @@ public class LiveAuthorization {
 
     private final LiveHub hub;
     private final DbSession session;
+    private final com.asata.org.oro.config.web.ActorCache cache;
 
-    /** after the commit of the current transaction (at once without one): the identity's streams end */
+    /**
+     * after the commit of the current transaction (at once without one): the identity's streams end, and its cached
+     * identity and accesses are forgotten (after the commit: a request before it would cache it again, still active)
+     */
     public void closeAfterCommit(UUID identityId) {
-        afterCommit(() -> hub.close(identityId));
+        afterCommit(() -> {
+            cache.forget(identityId);
+            hub.close(identityId);
+        });
     }
 
-    /** after the commit of the current transaction (at once without one): the identity's streams in the organization end */
+    /** after the commit of the current transaction (at once without one): its streams and its cached access in the organization end */
     public void closeAfterCommit(UUID identityId, UUID organizationId) {
-        afterCommit(() -> hub.close(identityId, organizationId));
+        afterCommit(() -> {
+            cache.forget(identityId, organizationId);
+            hub.close(identityId, organizationId);
+        });
     }
 
     /** closes the expired streams and those whose identity or organization access is no longer valid; the number closed */
@@ -66,9 +77,11 @@ public class LiveAuthorization {
         Objects.requireNonNull(allowed);
         for (LiveHub.Subject subject : subjects) {
             if (!allowed.active().contains(subject.identityId())) {
+                cache.forget(subject.identityId());
                 closed += hub.close(subject.identityId());
             } else if (subject.organizationId() != null
                     && !allowed.accesses().contains(subject.identityId() + "/" + subject.organizationId())) {
+                cache.forget(subject.identityId(), subject.organizationId());
                 closed += hub.close(subject.identityId(), subject.organizationId());
             }
         }
