@@ -67,9 +67,7 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:oro_api}
     password: ${SPRING_DATASOURCE_PASSWORD:}
     hikari:
-      # the load test (backend/perf): on 2 CPUs the connections wait for the CPU, not the other way round; more
-      # connections only queue more work in PostgreSQL. A connection not free within connection-timeout: 503
-      maximum-pool-size: ${ORO_DB_POOL_SIZE:10}
+      # its size: oro.database.api-pool-size (DataSourceConfig). A connection not free within connection-timeout: 503
       connection-timeout: 5000
       validation-timeout: 3000
 springdoc:
@@ -127,9 +125,7 @@ oro:
     username: ${ORO_SYSTEM_DATASOURCE_USERNAME:oro_worker}
     password: ${ORO_SYSTEM_DATASOURCE_PASSWORD:}
     hikari:
-      # the outbox worker, the integrations, the scans and purges: all 5 busy, 2 waiting at the load test's worst (a
-      # group of 500 sending 10 messages a second); the outbox lag stayed under 2 s up to 1,500 users, 7.7 s at 3,000
-      maximum-pool-size: ${ORO_WORKER_DB_POOL_SIZE:5}
+      # its size: oro.database.system-pool-size (DataSourceConfig)
       connection-timeout: 5000
       validation-timeout: 3000
   # the accounts' login (oro_auth, a member of oro_account only): the sign-in into Asata accounts, nothing of the
@@ -226,6 +222,14 @@ oro:
   erasure:
     enabled: ${ORO_ERASURE_ENABLED:true}
     interval: PT30S
+  database:
+    # the connections of the API's pool and of the system's (the outbox, the integrations, the scans, the identity of
+    # every request). 0: from the CPUs Oro may use (Java sees --cpus), as the load test measured (backend/perf, the
+    # pools): 5 a CPU for the API (10 to 20), 2.5 for the system (5 to 10): 10 and 5 on 2 CPUs, where the CPUs are the
+    # limit; 20 and 10 on 4, where 10 and 5 were (p95 at 3,000 people 395 to 201 ms). More was not measured on a quiet
+    # machine. With Umoja's and Mokili's, keep the total under PostgreSQL's max_connections (100)
+    api-pool-size: ${ORO_DB_POOL_SIZE:0}
+    system-pool-size: ${ORO_WORKER_DB_POOL_SIZE:0}
   outbox:
     enabled: ${ORO_OUTBOX_ENABLED:true}
     poll-interval: PT1S

@@ -79,7 +79,7 @@ published on `127.0.0.1` only. The container joins the shared database on the Do
 | `ORO_FILES_BACKUP_PASSWORD` | none | The passphrase of the backups of the files (restic); unset: no backup. Lost, the backups are lost with it |
 | `ORO_FILES_BACKUP_REPOSITORY`, `ORO_FILES_BACKUP_S3_KEY`, `ORO_FILES_BACKUP_S3_SECRET` | a volume | Where the backups of the files go: `s3:<endpoint>/<bucket>/oro-files` and its keys in production |
 | `SPRING_PROFILES_ACTIVE` | none | `production`: the secrets from `/run/secrets` (one file per setting), and a refusal to start on any setting of development (`ProductionChecks`); see `docs/deployment.md` |
-| `ORO_DB_POOL_SIZE`, `ORO_WORKER_DB_POOL_SIZE` | `10`, `5` | The connections of the API and of the worker. More does not help once the CPUs are busy ([load test](perf/README.md#load-test-2026-10-24)); keep the sum of every service under PostgreSQL's `max_connections` (100) |
+| `ORO_DB_POOL_SIZE`, `ORO_WORKER_DB_POOL_SIZE` | from the CPUs | The connections of the API and of the system. Unset: 5 a CPU (10 to 20) and 2.5 a CPU (5 to 10), as measured: 10 and 5 on 2 CPUs, 20 and 10 on 4 ([the sizes of the pools](perf/README.md#the-sizes-of-the-pools)); keep the sum of every service under PostgreSQL's `max_connections` (100) |
 | `ORO_MANAGEMENT_PORT` | `9082` | The actuator (health, `/actuator/prometheus`), never published: Prometheus reads it on the private network |
 | `ORO_LOG_FORMAT` | `ecs` here | The logs as JSON (Elastic Common Schema), the request id in each line; unset outside Docker: plain lines |
 | `ORO_RATE_LIMITS` | `true` | The [rate limits](#rate-limits) of the users; `false` only to measure without them |

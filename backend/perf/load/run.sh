@@ -46,6 +46,17 @@ for f in tokens.json jwks.json orgs.json busy.json api_pw worker_pw auth_pw; do
   [ -s "$LOAD_DIR/$f" ] || { echo "run.sh: $LOAD_DIR/$f missing (README, Running it)" >&2; exit 2; }
 done
 docker image inspect "$IMAGE" >/dev/null 2>&1 || { echo "run.sh: no image $IMAGE" >&2; exit 2; }
+# the tokens must outlive the run (Tokens.java: 12 h): expired, every request is a 401
+levels=$(echo $LEVELS | wc -w)
+need=$(( $(date +%s) + 600 + levels * (RAMP + HOLD + 30) + ${DRAIN:-90} ))
+python3 - "$LOAD_DIR/tokens.json" "$need" <<'PY' || exit 2
+import base64, json, sys, time
+token = json.load(open(sys.argv[1]))[0]["token"]
+claims = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
+if claims["exp"] < int(sys.argv[2]):
+    sys.exit(f"run.sh: the tokens expire at {time.strftime('%H:%M', time.localtime(claims['exp']))}, before the end "
+             "of the run: make them again (java Tokens.java <dir> 20 500 12)")
+PY
 # a laptop on battery slows down or sleeps: no comparable run (run it under caffeinate -ims, on mains power)
 if command -v pmset >/dev/null && pmset -g batt | head -1 | grep -q "Battery Power" && [ "${ALLOW_BATTERY:-}" != 1 ]; then
   echo "run.sh: on battery power: plug the machine in (or ALLOW_BATTERY=1)" >&2
@@ -143,8 +154,8 @@ until curl -sf --max-time 2 http://localhost:9095/actuator/health/readiness >/de
 # ---------- the samplers and the streams ----------
 METRICS=http://localhost:9095/actuator/prometheus INTERVAL=$INTERVAL "$here/sample.sh" "$out/oro-metrics.txt" & samplers="$samplers $!"
 (while true; do
-   # the containers there now (docker stats fails for all when one is missing: no ClamAV with SCAN=none)
-   docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' $(docker ps --format '{{.Names}}' --filter label=asata.loadtest=true; echo oro-plans) 2>/dev/null \
+   # every container running: the run's, and the others (another load test on the machine makes a run worthless)
+   docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' 2>/dev/null \
      | sed "s/^/$(ms) /"
    sleep "$INTERVAL"
  done) > "$out/cpu.txt" & samplers="$samplers $!"

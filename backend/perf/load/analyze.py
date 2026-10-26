@@ -105,6 +105,23 @@ def cpu(run):
     return out
 
 
+OWN = {"oro-load", "oro-plans", "oro-streams", "oro-load-k6", "oro-load-clamav"}
+
+
+def foreign_cpu(stats, start, end):
+    """the cores used by the containers that are not the run's, summed per sample, averaged; None: not recorded"""
+    per_sample = defaultdict(float)
+    seen = False
+    for t, name, cores, _ in stats:
+        if start <= t <= end:
+            seen = seen or name not in OWN
+            if name not in OWN:
+                per_sample[t] += cores
+    if not seen:
+        return None
+    return statistics.mean(per_sample.values()) if per_sample else 0.0
+
+
 def window(rows, start, end, key):
     # NaN: a gauge not read yet (just after a start)
     return [r[key] for r in rows if start <= r["epoch_ms"] <= end and r.get(key) is not None and r[key] == r[key]]
@@ -123,6 +140,11 @@ def report(run):
     if os.path.exists(readme):
         print("```\n" + open(readme).read().strip() + "\n```\n")
     rows, stats = samples(run), cpu(run)
+    # the other containers of the machine (not the run's): another load test or a busy service makes the run worthless
+    for s in stages:
+        other = foreign_cpu(stats, s["hold"], s["end"])
+        if other is not None and other > 0.5:
+            print(f"**NOT COMPARABLE: during level {s['level']} other containers used {other:.1f} cores on average.**\n")
     # a level much longer than planned: the machine slept or stalled, the run is not comparable
     for s in stages:
         if s["power"] == "battery":
@@ -339,14 +361,15 @@ def level_summary(run):
             "db_cpu": statistics.mean(core("oro-plans")) if core("oro-plans") else None,
             "api_wait": top("api_pending"), "sys_wait": top("sys_pending"),
             "outbox_oldest": top("outbox_oldest_s"), "power": s["power"],
+            "foreign": foreign_cpu(stats, a, b),
         }
     return out
 
 
 def compare(runs):
     """the runs side by side, by level (the delivery p95 from their report.md)"""
-    print("| Run | Level | Worst p95 / p99 (ms) | Send p95 | Failed % | Requests/s | Oro CPU | DB CPU | API / system pool waiting (most) | Outbox oldest (s) | Delivery p95 (ms) | Power |")
-    print("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    print("| Run | Level | Worst p95 / p99 (ms) | Send p95 | Failed % | Requests/s | Oro CPU | DB CPU | API / system pool waiting (most) | Outbox oldest (s) | Delivery p95 (ms) | Power | Other containers CPU |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for run in runs:
         delivery = {}
         rep = os.path.join(run, "report.md")
@@ -358,7 +381,8 @@ def compare(runs):
         for level, v in sorted(level_summary(run).items()):
             print(f"| {os.path.basename(run.rstrip('/'))} | {level:,} | {fmt(v['p95'])} / {fmt(v['p99'])} | {fmt(v['send_p95'])} | "
                   f"{fmt(v['failed'], 2)} | {fmt(v['rps'])} | {fmt(v['oro_cpu'], 2)} | {fmt(v['db_cpu'], 2)} | "
-                  f"{fmt(v['api_wait'])} / {fmt(v['sys_wait'])} | {fmt(v['outbox_oldest'], 1)} | {delivery.get(level, '-')} | {v['power']} |")
+                  f"{fmt(v['api_wait'])} / {fmt(v['sys_wait'])} | {fmt(v['outbox_oldest'], 1)} | {delivery.get(level, '-')} | {v['power']} | "
+                  f"{fmt(v['foreign'], 2) if v['foreign'] is not None else 'not recorded'} |")
 
 
 if __name__ == "__main__":

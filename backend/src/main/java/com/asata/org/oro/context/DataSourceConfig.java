@@ -3,6 +3,7 @@ package com.asata.org.oro.context;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.persistence.EntityManagerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceProperties;
 import org.springframework.context.annotation.Bean;
@@ -38,9 +39,11 @@ public class DataSourceConfig {
     @Bean
     @Primary
     @ConfigurationProperties("spring.datasource.hikari")
-    HikariDataSource dataSource(DataSourceProperties dataSourceProperties) {
+    HikariDataSource dataSource(DataSourceProperties dataSourceProperties,
+                                @Value("${oro.database.api-pool-size:0}") int size) {
         HikariDataSource dataSource = dataSourceProperties.initializeDataSourceBuilder().type(HikariDataSource.class).build();
         dataSource.setPoolName("oro-api");
+        dataSource.setMaximumPoolSize(PoolSizes.api(size, Runtime.getRuntime().availableProcessors()));
         dataSource.addDataSourceProperty(NO_ERROR_DETAIL, "false");
         return dataSource;
     }
@@ -53,9 +56,11 @@ public class DataSourceConfig {
 
     @Bean
     @ConfigurationProperties("oro.system-datasource.hikari")
-    HikariDataSource systemDataSource(@Qualifier("systemDataSourceProperties") DataSourceProperties properties) {
+    HikariDataSource systemDataSource(@Qualifier("systemDataSourceProperties") DataSourceProperties properties,
+                                      @Value("${oro.database.system-pool-size:0}") int size) {
         HikariDataSource dataSource = properties.initializeDataSourceBuilder().type(HikariDataSource.class).build();
         dataSource.setPoolName("oro-system");
+        dataSource.setMaximumPoolSize(PoolSizes.system(size, Runtime.getRuntime().availableProcessors()));
         dataSource.addDataSourceProperty(NO_ERROR_DETAIL, "false");
         return dataSource;
     }

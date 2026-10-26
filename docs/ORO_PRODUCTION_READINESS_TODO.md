@@ -753,6 +753,7 @@ transaction-local and tested; the product isolation by composite foreign keys is
 
 - [x] `ORO-SCL-009` — P2 — Size the connection pool and the server threads
   - Done (2026-10-24): from the load test: the API's pool 10 and the worker's 5, now explicit (`ORO_DB_POOL_SIZE`, `ORO_WORKER_DB_POOL_SIZE`); Tomcat's 200 threads. No wait for a connection up to 1,000 people; past the saturation of the CPUs the requests wait for one, and a request that gets none in 5 s now answers 503 with `Retry-After` instead of 500 (`HttpExceptionHandlerTest`). More connections would only queue more work in PostgreSQL. With Umoja's pool, the total stays well under `max_connections` (100).
+  - Then (2026-10-26): at 4 CPUs the pools are the limit (Oro at 2.4 of 4 cores, 187 waiting): 20 and 10 halved the p95 at 3,000 people. Oro now sizes them from its CPUs (`PoolSizes`: 5 a CPU for the API, 10 to 20; 2.5 for the system, 5 to 10; `ORO_DB_POOL_SIZE` and `ORO_WORKER_DB_POOL_SIZE` still win). Tested: `PoolSizesTest`. Left: confirm on a server like production (one run of 20/10 at 4 CPUs is the evidence; the runs to choose more finely were spoilt by another load test on the machine); above 4 CPUs.
   - Current state: Defaults (Hikari 10 connections, Tomcat 200 threads)
   - Evidence: `application.yml` (`hikari` timeouts only).
   - Problem: two pools after `ORO-SEC-001`; streams hold a socket, not a thread nor a connection (verified:

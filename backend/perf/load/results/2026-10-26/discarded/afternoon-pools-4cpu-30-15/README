@@ -1,0 +1,9 @@
+run: pools-4cpu-30-15, 2026-10-26T11:59:47Z
+git: 5544088
+image: oro-load:capacity-fix sha256:1aeb35d7e5a00b4b565f956f01f9b12293dd72ec5be462152ebaf27a1b273a73 2026-10-26T11:14:35.89306717Z
+oro: --cpus=4 --memory=2g, JAVA_OPTS -XX:MaxRAMPercentage=75, scan clamav, ORO_DB_POOL_SIZE=30 ORO_WORKER_DB_POOL_SIZE=15
+database: oro-plans, postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2), no CPU or memory limit, settings default, data restored: 1
+docker: 10 CPUs, 16745824256 bytes, Docker Desktop
+power: Battery Power, low power mode 0
+workload: levels 3000 4000 (ramp 60 s, hold 120 s), warm-up 200:60, streams 5000 (tracked 300), list events, busy 0/s, uploads 0.01 x 20 KB (download check 1)
+restart: none; profile: none

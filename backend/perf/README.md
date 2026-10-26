@@ -372,6 +372,20 @@ What would give the most, from these numbers (not done: measure each):
 4. Each presence and each new stream goes through every stream of the instance (`LiveHub.presence`): the streams
    indexed by organization.
 
+### The sizes of the pools
+
+From the runs above on a quiet machine (the morning): on 2 CPUs the CPUs are the limit, the pools of 10 (API) and 5
+(system) are enough; on 4 CPUs the pools are the limit, and 20 and 10 halved the p95 at 3,000 people (395 to 201 ms,
+send 329 to 153 ms) with nothing worse at 2,000 (75 to 57 ms). So Oro sizes them from the CPUs it may use
+(`PoolSizes`, Java sees `--cpus`): 5 a CPU for the API (10 to 20), 2.5 for the system (5 to 10); 10 and 5 on 2 CPUs,
+20 and 10 on 4 or more. `ORO_DB_POOL_SIZE` and `ORO_WORKER_DB_POOL_SIZE` still set them. Above 20 and 10 nothing was
+measured on a quiet machine: the sizes stop there. With Umoja's (10) and Mokili's, 30 connections of Oro stay well
+under `max_connections` (100).
+
+The runs of the afternoon meant to choose more finely (30/15, 40/20, each again warmed) were spoilt: another
+project's load test ran on the same machine (`results/2026-10-26/discarded`). One run of 20/10 at 4 CPUs is the
+evidence: to confirm on a server like production, two runs of each size, interleaved.
+
 ### Capacity: the 3 times the expected peak
 
 **Not decided: no expected peak is given.** No document of the project, nor the TODO, nor the launch checklist,
