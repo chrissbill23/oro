@@ -37,7 +37,7 @@ Two launches:
 - [ ] The privacy notice and Umoja's processing terms match what the system does (`ORO-LCH-018`)
 - [ ] A person's data can be exported and erased on request, and Umoja's administrators have a way to ask for it
       (`ORO-LCH-002`, `ORO-LCH-018`)
-- [ ] All the tests (203 today) pass in CI on the release commit (`ORO-LCH-017`)
+- [ ] All the tests (214 today) pass in CI on the release commit (`ORO-LCH-017`)
 
 ## 3. Data recovery
 
@@ -72,7 +72,7 @@ Two launches:
 - [ ] A slow client cannot hold up the others' events (`ORO-SCL-004`)
 - [ ] The load test shows at least 3 times the expected peak; pools sized from it (`ORO-SCL-007`, `ORO-SCL-009`)
       Measured (2026-10-26, one laptop, ClamAV on): 1,500 people active on 2 CPUs, 3,000 on 4. Open: the expected
-      peak is not given, nor the accepted latency; at 4 CPUs the pools (10, 5) are the limit.
+      peak is not given, nor the accepted latency; the pools now follow the CPUs (20 and 10 on 4), to confirm on a server.
 
 ## 7. Operations
 

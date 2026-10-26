@@ -46,6 +46,8 @@ Caddy in production ([Deployment](deployment.md)).
   API's can never act as the system. Member roles are enforced by triggers, not only in Java. What a user may not see
   answers 404.
 - Open streams are checked again: they end with their token, on a revocation, and every 30 s.
+- A request's identity and organization access are kept 5 s (allowed only) and forgotten with the commit of whatever
+  takes them away: the next request after a revocation or a suspension is refused.
 - The integrations call `/internal` with a key per product, kept as a hash and rotated without downtime; user tokens
   are refused there. Umoja's nginx keeps `/oro/internal` and the actuator off the public network.
 - Limits: requests per user (429 with `Retry-After`), 5 streams per user and 10,000 in total, 1 GiB and 200 files a
@@ -85,14 +87,15 @@ Caddy in production ([Deployment](deployment.md)).
 
 ## Code and tests
 
-- 146 source files under `backend/src/main/java/com/asata/org/oro`: account (Oro's sign-in), identity (with the
+- 148 source files under `backend/src/main/java/com/asata/org/oro`: account (Oro's sign-in), identity (with the
   export and the erasure), conversation, message, attachment (storage, scan, purge), live, outbox, push, safety
   (requests, blocks, reports), config (security, web, rate limits, metrics, production) and context (the database
   session).
-- 204 tests in 43 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- 214 tests in 47 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - Capacity (`backend/perf`, measured on one laptop with ClamAV on and 5,000 people connected): one instance on 2 CPUs
   holds about 1,500 people active at once (2,000 with messages 4 s late), on 4 CPUs about 3,000; at 2 CPUs its CPUs
-  are the limit, at 4 its database pools. Whether that is 3 times the peak is not known: no expected peak is given.
+  are the limit, at 4 its database pools, now sized from the CPUs (20 and 10 on 4, as measured). Whether that is 3
+  times the peak is not known: no expected peak is given.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
 - Umoja already uses Oro: its frontend has a Messages page (its list follows the live events instead of being read
