@@ -63,6 +63,12 @@ public class LiveHub implements SmartLifecycle {
      * without a pass over every stream of the instance (a reconnection of 5,000 streams was 5,000 such passes)
      */
     private final Map<Scope, Set<Connection>> byScope = new ConcurrentHashMap<>();
+    /**
+     * Oro's people (their scope is all of Oro): each identity with a stream open, the identities it shares its presence
+     * with (PresenceContacts: a conversation in common, accepted by both, no block between them). Kept both ways:
+     * whoever is in a set, online, has the other in its own
+     */
+    private final Map<UUID, Set<UUID>> contacts = new ConcurrentHashMap<>();
     /** the end of each stream at the expiry of its token, while it is open: the client hears reconnect */
     private final Map<Connection, ScheduledFuture<?>> expiries = new ConcurrentHashMap<>();
     private final ScheduledExecutorService expirer = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -150,7 +156,15 @@ public class LiveHub implements SmartLifecycle {
      * a new stream of the actor, until its token expires (30 minutes at most): it first gets who is online, and the
      * others of its scope learn it is
      */
-    public synchronized SseEmitter connect(Actor actor, String userId, Instant tokenExpiresAt) {
+    public SseEmitter connect(Actor actor, String userId, Instant tokenExpiresAt) {
+        return connect(actor, userId, tokenExpiresAt, Set.of());
+    }
+
+    /**
+     * knows: for Oro's people, the identities it shares its presence with (read before, out of the lock); only they
+     * are in its hello and hear it come and go. Umoja's people: their organization, knows unused
+     */
+    public synchronized SseEmitter connect(Actor actor, String userId, Instant tokenExpiresAt, Set<UUID> knows) {
         if (stopping) {
             throw new ServiceUnavailable("Oro is restarting, try again in a few seconds", 5);
         }
@@ -173,7 +187,17 @@ public class LiveHub implements SmartLifecycle {
         boolean first = !isOnline(actor.identityId(), scope);
         // the hello first in its queue, before the stream can be given any event: a client catches up on its hello,
         // an event before it would come from before what it reads then (the online: as once it is registered)
-        Set<String> online = online(scope);
+        if (personal(scope)) {
+            Set<UUID> mine = ConcurrentHashMap.newKeySet();
+            mine.addAll(knows);
+            contacts.put(actor.identityId(), mine);
+            // both ways: its contacts online know it now
+            knows.forEach(other -> contacts.computeIfPresent(other, (id, theirs) -> {
+                theirs.add(actor.identityId());
+                return theirs;
+            }));
+        }
+        Set<String> online = personal(scope) ? onlineAmong(knows) : online(scope);
         online.add(userId);
         send(connection, Map.of("type", "hello", "online", online));
         connections.computeIfAbsent(actor.identityId(), id -> new CopyOnWriteArraySet<>()).add(connection);
@@ -408,17 +432,89 @@ public class LiveHub implements SmartLifecycle {
         });
         // stopping, every stream closes: no "offline" to the others (each would cost a pass over all the streams: a
         // stop under load with 5,000 streams did not end within 45 s)
-        if (!stopping && !isOnline(connection.identityId(), connection.scope())) {
+        boolean last = !isOnline(connection.identityId(), connection.scope());
+        if (!stopping && last) {
             presence(connection, false);
+        }
+        if (last && personal(connection.scope())) {
+            Set<UUID> mine = contacts.remove(connection.identityId());
+            if (mine != null) {
+                mine.forEach(other -> contacts.computeIfPresent(other, (id, theirs) -> {
+                    theirs.remove(connection.identityId());
+                    return theirs;
+                }));
+            }
         }
     }
 
-    /** the others of the scope learn that the user came online, or went offline */
+    /** the others of the scope learn that the user came online, or went offline: for Oro's people, its contacts only */
     private void presence(Connection of, boolean online) {
         Map<String, Object> event = Map.of("type", "presence", "userId", of.userId(), "online", online);
-        byScope.getOrDefault(of.scope(), Set.of()).stream()
-                .filter(connection -> !connection.identityId().equals(of.identityId()))
-                .forEach(connection -> send(connection, event));
+        java.util.stream.Stream<Connection> to = personal(of.scope())
+                ? contacts.getOrDefault(of.identityId(), Set.of()).stream().flatMap(this::personalStreams)
+                : byScope.getOrDefault(of.scope(), Set.of()).stream();
+        to.filter(connection -> !connection.identityId().equals(of.identityId())).forEach(connection -> send(connection, event));
+    }
+
+    /** Oro's people: their presence is shared with the people they share a conversation with, not with all of Oro */
+    private static boolean personal(Scope scope) {
+        return scope.product() == com.asata.org.oro.enums.Product.ORO;
+    }
+
+    private java.util.stream.Stream<Connection> personalStreams(UUID identityId) {
+        return connections.getOrDefault(identityId, Set.of()).stream().filter(connection -> personal(connection.scope()));
+    }
+
+    /** the user ids of these identities of Oro with a stream open: the online among one's contacts */
+    public Set<String> onlineAmong(java.util.Collection<UUID> identityIds) {
+        Set<String> userIds = new TreeSet<>();
+        identityIds.forEach(id -> personalStreams(id).forEach(connection -> userIds.add(connection.userId())));
+        return userIds;
+    }
+
+    /** the identities of Oro with a stream open (PresenceContacts reads their contacts again) */
+    public Set<UUID> personalOnline() {
+        return Set.copyOf(contacts.keySet());
+    }
+
+    /**
+     * the contacts of an identity of Oro read again: who stops being one hears it go offline and is no longer seen by
+     * it, who becomes one is told it is online, both ways; nothing when it has no stream open
+     */
+    public void updateContacts(UUID identityId, Set<UUID> fresh) {
+        Set<UUID> mine = contacts.get(identityId);
+        if (mine == null) {
+            return;
+        }
+        for (UUID other : Set.copyOf(mine)) {
+            if (!fresh.contains(other)) {
+                mine.remove(other);
+                if (contacts.computeIfPresent(other, (id, theirs) -> {
+                    theirs.remove(identityId);
+                    return theirs;
+                }) != null) {
+                    tell(identityId, other, false);
+                    tell(other, identityId, false);
+                }
+            }
+        }
+        for (UUID other : fresh) {
+            if (mine.add(other) && contacts.computeIfPresent(other, (id, theirs) -> {
+                theirs.add(identityId);
+                return theirs;
+            }) != null) {
+                tell(identityId, other, true);
+                tell(other, identityId, true);
+            }
+        }
+    }
+
+    /** the streams of Oro of one identity hear that another came online or went offline */
+    private void tell(UUID to, UUID about, boolean online) {
+        personalStreams(about).findFirst().map(Connection::userId).ifPresent(userId -> {
+            Map<String, Object> event = Map.of("type", "presence", "userId", userId, "online", online);
+            personalStreams(to).forEach(connection -> send(connection, event));
+        });
     }
 
     /** queued for the stream, never written here: the caller never waits for a client */

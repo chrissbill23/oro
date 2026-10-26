@@ -127,9 +127,10 @@ The choices that limit Oro today, why they were made, what they risk, and when t
   list go through the streams of their organization only, no longer every stream of the instance. 5,000 streams of
   10 organizations connecting then closing: 1,100 and 615 ms of the hub's work before, 285 and 220 ms after.
 - **Risk**: still the organization squared when all of it moves at once (a restart: each of its streams tells all the
-  others); for Oro's own people the scope is all of Oro: every Oro user online hears when every other one comes and
-  goes, and sees them in its hello (a privacy question as well as a cost, open).
-- **Revisit**: an organization of several thousands online at once; Oro's presence limited to the people one knows.
+  others). Oro's own people share their presence with their contacts only since 2026-10-26 (`PresenceContacts`: the
+  people of their conversations, accepted by both, no block), not with all of Oro; a conversation started, accepted
+  or left counts within 30 s (a block at once).
+- **Revisit**: an organization of several thousands online at once.
 
 ### The identity and the access of a request are cached in the instance
 

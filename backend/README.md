@@ -131,7 +131,8 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `MessagingFeaturesTest` | The team chats follow their team (name, members, system messages; nothing written when nothing changed); the users cannot change them nor make one; leaving the organization ends the conversations; a late snapshot never brings back a revoked access, and concurrent synchronizations end as the newest; the list (last message, the other one, unread); mute; rename; reactions (one emoji, RLS, gone with a deleted message); search (only what the member may read, wildcards as text); read times; the live events of the outbox and of typing |
 | `MessagingApiTest` | The same over HTTP: the synchronization by the Umoja integration only; list, reactions, search, mute, read positions, typing; a file uploaded (its name cleaned, its size limited), sent, then downloaded by the members only with safe headers |
 | `EmojisTest` | A reaction is one emoji whatever it is (skin tones, flags, ZWJ sequences); never text, digits, keycaps, a lone modifier nor several emojis |
-| `LiveHubTest` | Five streams per user, the sixth refused and none closed for it; a cap per instance; the streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only; a stream ends with its token (30 minutes at most) with `reconnect`; closed by identity or organization, offline after; the hello first on every stream; a stop tells every stream to reconnect and tells nobody the others went offline; the streams indexed by organization, emptied when they go, consistent under concurrency |
+| `LiveHubTest` | Five streams per user, the sixth refused and none closed for it; a cap per instance; the streams and the presence: online while a stream is open, per organization; an event reaches its recipients in its scope only; a stream ends with its token (30 minutes at most) with `reconnect`; closed by identity or organization, offline after; the hello first on every stream; a stop tells every stream to reconnect and tells nobody the others went offline; the streams indexed by organization, emptied when they go, consistent under concurrency; an Oro person seen by its contacts only, contacts gained and lost told both ways |
+| `PresenceContactsTest` | The contacts of an Oro person: the people of its conversations accepted by both, not a request waiting, not someone who left, not after a block; `GET /presence` shows them only |
 | `LiveAuthorizationTest` | Revocation, suspension and deactivation close the streams with their commit; the periodic check closes what changed elsewhere; a stream lasts as long as its token |
 | `IntegrationKeyTest` | During a rotation both keys open `/internal`; the logs name the key used, never the key; a key not listed, a short one or the stored hash itself is refused |
 | `IntegrationKeysConfigTest` | The keys are configured as `name:sha256` only: the key itself, a name twice or a key for two products is refused |
@@ -213,7 +214,7 @@ carries an `x-request-id` header.
 | `POST /conversations/{id}/attachments` (multipart `file`) | Uploads a file, then send a message with its id |
 | `GET /attachments/{id}/content` | Downloads a file of a message the caller may read |
 | `GET /stream` | The stream of the caller (Server-Sent Events), see [Live](#live-the-stream-of-each-user) |
-| `GET /presence` | Who is online in the caller's context |
+| `GET /presence` | Who is online: for Umoja's people, of their organization; for Oro's, among the people they share a conversation with (accepted by both, no block), and themselves |
 | `PUT /internal/identities/{userId}` | Integration: provisions an identity |
 | `POST /internal/identities/{userId}/suspend`, `/reactivate`, `/deactivate` | Integration: changes an identity's status |
 | `POST /internal/identities/{userId}/erase[?organizationId=]` | Integration: erases the data of one of its people (202); with `organizationId`, in that organization's conversations only (the identity and its other organizations untouched) |
@@ -387,8 +388,8 @@ ids and numbers only; the client reads what changed through the API:
 
 | Event | When |
 |---|---|
-| `hello {online}` | At the start: who is online in the caller's context |
-| `presence {userId, online}` | Someone of the context opened their first stream, or closed their last one |
+| `hello {online}` | At the start: who is online in the caller's context (Umoja: the organization; Oro: its contacts, the people it shares a conversation with) |
+| `presence {userId, online}` | Someone of the context opened their first stream, or closed their last one; for Oro, also someone who became a contact or stopped being one (a block at once, a conversation started, accepted or left within 30 s) |
 | `message {change: created, edited, deleted, reaction; conversationId, messageId, seq}` | From the outbox (about 1 s) |
 | `conversation {change; conversationId}` | Created, renamed, a member added or gone (the one who left hears it too) |
 | `typing {conversationId, userId}` | At once, for the other members; lasts a few seconds |

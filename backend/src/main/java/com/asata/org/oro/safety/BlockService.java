@@ -26,6 +26,7 @@ public class BlockService {
 
     private final DbSession session;
     private final JdbcTemplate jdbc;
+    private final com.asata.org.oro.live.PresenceContacts presenceContacts;
 
     @Transactional
     public void block(Actor actor, UUID blockedId) {
@@ -45,6 +46,18 @@ public class BlockService {
                   AND c.conversation_type = 'direct' AND c.created_by = ?""",
                 LeftReason.DECLINED.code(), actor.identityId(), blockedId);
         log.info("identity {} blocked another ({} request declined)", actor.identityId(), declined);
+        presenceAfterCommit(actor.identityId(), blockedId);
+    }
+
+    /** after the commit: the two no longer share their presence (a block), or share it again (an unblock) */
+    private void presenceAfterCommit(UUID one, UUID other) {
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        presenceContacts.refresh(java.util.List.of(one, other));
+                    }
+                });
     }
 
     @Transactional
@@ -52,6 +65,7 @@ public class BlockService {
         requireOro(actor);
         session.enterUser(actor);
         jdbc.update("DELETE FROM oro_identity_block WHERE blocker_id = ? AND blocked_id = ?", actor.identityId(), blockedId);
+        presenceAfterCommit(actor.identityId(), blockedId);
     }
 
     /** the identities the actor blocked */

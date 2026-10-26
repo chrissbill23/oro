@@ -35,6 +35,7 @@ public class LiveAuthorization {
     private final LiveHub hub;
     private final DbSession session;
     private final com.asata.org.oro.config.web.ActorCache cache;
+    private final PresenceContacts presenceContacts;
 
     /**
      * after the commit of the current transaction (at once without one): the identity's streams end, and its cached
@@ -59,6 +60,8 @@ public class LiveAuthorization {
     @Scheduled(fixedDelayString = "${oro.live.authorization-check:PT30S}")
     public int check() {
         int closed = hub.closeExpired();
+        // the contacts of Oro's people online read again: a conversation started, accepted or left counts within 30 s
+        presenceContacts.refreshAll();
         Set<LiveHub.Subject> subjects = hub.subjects();
         if (subjects.isEmpty()) {
             return closed;

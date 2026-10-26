@@ -162,6 +162,43 @@ class LiveHubTest {
         assertThat(amara.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "jordan", "online", false));
     }
 
+    private RecordingEmitter oro(UUID identity, String userId, Set<UUID> knows) {
+        return (RecordingEmitter) hub.connect(Actor.oro(identity), userId, now.plus(java.time.Duration.ofMinutes(15)), knows);
+    }
+
+    /** Oro's people share their presence with their contacts only (a conversation in common), not with all of Oro */
+    @Test
+    void anOroPersonIsSeenByItsContactsOnly() {
+        UUID amani = UUID.randomUUID();
+        UUID baraka = UUID.randomUUID();
+        UUID nia = UUID.randomUUID();
+        RecordingEmitter amaniStream = oro(amani, "amani", Set.of(baraka));
+        RecordingEmitter niaStream = oro(nia, "nia", Set.of());
+        RecordingEmitter barakaStream = oro(baraka, "baraka", Set.of(amani));
+
+        // Baraka sees Amani, not Nia; Amani hears Baraka come; Nia hears nobody and is seen by nobody
+        assertThat(barakaStream.ofType("hello")).containsExactly(Map.of("type", "hello", "online", Set.of("amani", "baraka")));
+        assertThat(amaniStream.ofType("presence")).containsExactly(Map.of("type", "presence", "userId", "baraka", "online", true));
+        assertThat(niaStream.ofType("hello")).containsExactly(Map.of("type", "hello", "online", Set.of("nia")));
+        assertThat(niaStream.ofType("presence")).isEmpty();
+        assertThat(hub.onlineAmong(Set.of(baraka, nia))).containsExactly("baraka", "nia");
+
+        // no longer contacts (a block, a conversation left): each sees the other go, both ways
+        hub.updateContacts(amani, Set.of());
+        assertThat(amaniStream.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "baraka", "online", false));
+        assertThat(barakaStream.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "amani", "online", false));
+        // contacts again: each sees the other come back
+        hub.updateContacts(amani, Set.of(baraka));
+        assertThat(amaniStream.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "baraka", "online", true));
+        assertThat(barakaStream.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "amani", "online", true));
+
+        // Baraka leaves: Amani hears it, Nia does not
+        barakaStream.close();
+        assertThat(amaniStream.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "baraka", "online", false));
+        assertThat(niaStream.ofType("presence")).isEmpty();
+        assertThat(hub.personalOnline()).containsExactlyInAnyOrder(amani, nia);
+    }
+
     /** the streams indexed by organization: who is online there and its presence, nothing left once they are gone */
     @Test
     void theStreamsAreIndexedByOrganization() {
