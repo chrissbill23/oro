@@ -162,6 +162,57 @@ class LiveHubTest {
         assertThat(amara.ofType("presence")).last().isEqualTo(Map.of("type", "presence", "userId", "jordan", "online", false));
     }
 
+    /** the streams indexed by organization: who is online there and its presence, nothing left once they are gone */
+    @Test
+    void theStreamsAreIndexedByOrganization() {
+        RecordingEmitter amara = connect(UUID.randomUUID(), "amara", ACME);
+        RecordingEmitter bob = connect(UUID.randomUUID(), "bob", GLOBEX);
+        RecordingEmitter kwame = connect(UUID.randomUUID(), "kwame", ACME);
+        assertThat(hub.online(com.asata.org.oro.enums.Product.UMOJA, ACME)).containsExactly("amara", "kwame");
+        assertThat(hub.online(com.asata.org.oro.enums.Product.UMOJA, GLOBEX)).containsExactly("bob");
+        // Kwame's arrival told Acme only
+        assertThat(amara.ofType("presence")).hasSize(1);
+        assertThat(bob.ofType("presence")).isEmpty();
+        assertThat(hub.scopesOpen()).isEqualTo(2);
+
+        amara.close();
+        bob.close();
+        kwame.close();
+        assertThat(hub.online(com.asata.org.oro.enums.Product.UMOJA, ACME)).isEmpty();
+        assertThat(hub.scopesOpen()).isZero();
+    }
+
+    /** streams opened and closed at once by many threads: the index ends as the streams open, none lost nor left */
+    @Test
+    void theIndexHoldsUnderConcurrency() throws Exception {
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+        List<java.util.concurrent.Future<?>> done = new ArrayList<>();
+        java.util.Set<String> kept = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        for (int t = 0; t < 8; t++) {
+            int thread = t;
+            done.add(pool.submit(() -> {
+                for (int i = 0; i < 200; i++) {
+                    String user = "u" + thread + "-" + i;
+                    RecordingEmitter stream = (RecordingEmitter) hub.connect(Actor.umoja(UUID.randomUUID(), ACME), user,
+                            now.plus(java.time.Duration.ofMinutes(15)));
+                    if (i % 10 == 0) {
+                        kept.add(user);
+                    } else {
+                        stream.close();
+                    }
+                }
+                return null;
+            }));
+        }
+        for (java.util.concurrent.Future<?> f : done) {
+            f.get();
+        }
+        pool.shutdown();
+        assertThat(hub.online(com.asata.org.oro.enums.Product.UMOJA, ACME)).containsExactlyInAnyOrderElementsOf(kept);
+        assertThat(hub.openStreams()).isEqualTo(kept.size());
+        assertThat(hub.scopesOpen()).isEqualTo(1);
+    }
+
     /** five streams a user: the sixth is refused, the five keep going; the instance has its own cap */
     @Test
     void theStreamsOfAUserAndOfTheInstanceAreBounded() {

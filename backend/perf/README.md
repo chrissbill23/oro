@@ -370,7 +370,8 @@ What would give the most, from these numbers (not done: measure each):
    filter (done since: off by default, `ORO_SECURITY_OBSERVATIONS`; its gain not measured yet).
 3. The user ids of a response read through Hibernate (`externalIds`, 5 %): one query, or kept with the identity.
 4. Each presence and each new stream goes through every stream of the instance (`LiveHub.presence`): the streams
-   indexed by organization.
+   indexed by organization (done since: a reconnection of 5,000 streams of 10 organizations, 1,715 ms of the hub's
+   work before, 505 ms after).
 
 ### The sizes of the pools
 

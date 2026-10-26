@@ -121,16 +121,15 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 - **Revisit**: when the availability target needs a second instance, CPU passes 60 % at peak, or open streams pass
   ~10k. Use PostgreSQL `LISTEN/NOTIFY` first; Redis only if it is measured to be insufficient (`ORO-SCL-006`).
 
-### Presence passes over every stream
+### Presence goes to the whole organization
 
-- **Today**: each user coming online or going offline is told to its organization by a pass over every stream of the
-  instance (`LiveHub.presence`), and so is each new stream's hello (who is online).
-- **Why**: simple, and cheap at today's numbers in the steady state.
-- **Risk**: it grows with the streams squared when they all move at once: 5,000 streams coming back after a restart
-  sent 1.25 million presence events; a stop did the same (5,000 × 5,000) until presence was skipped while stopping
-  (2026-10-26).
-- **Revisit**: when streams pass a few thousand per organization, or a reconnection of everyone shows in the CPU:
-  index the streams by organization.
+- **Today** (since 2026-10-26): the streams are indexed by scope (`LiveHub.byScope`): a presence and a hello's online
+  list go through the streams of their organization only, no longer every stream of the instance. 5,000 streams of
+  10 organizations connecting then closing: 1,100 and 615 ms of the hub's work before, 285 and 220 ms after.
+- **Risk**: still the organization squared when all of it moves at once (a restart: each of its streams tells all the
+  others); for Oro's own people the scope is all of Oro: every Oro user online hears when every other one comes and
+  goes, and sees them in its hello (a privacy question as well as a cost, open).
+- **Revisit**: an organization of several thousands online at once; Oro's presence limited to the people one knows.
 
 ### The identity and the access of a request are cached in the instance
 

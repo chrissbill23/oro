@@ -58,6 +58,11 @@ public class LiveHub implements SmartLifecycle {
     static final Duration STREAM_TIMEOUT = Duration.ofMinutes(30);
 
     private final Map<UUID, Set<Connection>> connections = new ConcurrentHashMap<>();
+    /**
+     * the same streams by scope (an organization of Umoja, or Oro): who is online there, who hears its presence,
+     * without a pass over every stream of the instance (a reconnection of 5,000 streams was 5,000 such passes)
+     */
+    private final Map<Scope, Set<Connection>> byScope = new ConcurrentHashMap<>();
     /** the end of each stream at the expiry of its token, while it is open: the client hears reconnect */
     private final Map<Connection, ScheduledFuture<?>> expiries = new ConcurrentHashMap<>();
     private final ScheduledExecutorService expirer = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -172,6 +177,12 @@ public class LiveHub implements SmartLifecycle {
         online.add(userId);
         send(connection, Map.of("type", "hello", "online", online));
         connections.computeIfAbsent(actor.identityId(), id -> new CopyOnWriteArraySet<>()).add(connection);
+        // in the compute: never added to a set that a last disconnect of the scope is removing
+        byScope.compute(scope, (key, set) -> {
+            Set<Connection> in = set == null ? ConcurrentHashMap.newKeySet() : set;
+            in.add(connection);
+            return in;
+        });
         open.incrementAndGet();
         // the stream ended by the server (its end, a timeout) or by the client (an error of the connection)
         Runnable gone = () -> gone(connection);
@@ -329,10 +340,13 @@ public class LiveHub implements SmartLifecycle {
 
     private Set<String> online(Scope scope) {
         Set<String> userIds = new TreeSet<>();
-        connections.values().forEach(set -> set.stream()
-                .filter(connection -> connection.scope().equals(scope))
-                .forEach(connection -> userIds.add(connection.userId())));
+        byScope.getOrDefault(scope, Set.of()).forEach(connection -> userIds.add(connection.userId()));
         return userIds;
+    }
+
+    /** the scopes with a stream open (the tests: none left once every stream is gone) */
+    int scopesOpen() {
+        return byScope.size();
     }
 
     private boolean isOnline(UUID identityId, Scope scope) {
@@ -388,6 +402,10 @@ public class LiveHub implements SmartLifecycle {
         }
         open.decrementAndGet();
         connections.computeIfPresent(connection.identityId(), (id, rest) -> rest.isEmpty() ? null : rest);
+        byScope.computeIfPresent(connection.scope(), (key, ofScope) -> {
+            ofScope.remove(connection);
+            return ofScope.isEmpty() ? null : ofScope;
+        });
         // stopping, every stream closes: no "offline" to the others (each would cost a pass over all the streams: a
         // stop under load with 5,000 streams did not end within 45 s)
         if (!stopping && !isOnline(connection.identityId(), connection.scope())) {
@@ -398,9 +416,9 @@ public class LiveHub implements SmartLifecycle {
     /** the others of the scope learn that the user came online, or went offline */
     private void presence(Connection of, boolean online) {
         Map<String, Object> event = Map.of("type", "presence", "userId", of.userId(), "online", online);
-        connections.values().forEach(set -> set.stream()
-                .filter(connection -> connection.scope().equals(of.scope()) && !connection.identityId().equals(of.identityId()))
-                .forEach(connection -> send(connection, event)));
+        byScope.getOrDefault(of.scope(), Set.of()).stream()
+                .filter(connection -> !connection.identityId().equals(of.identityId()))
+                .forEach(connection -> send(connection, event));
     }
 
     /** queued for the stream, never written here: the caller never waits for a client */

@@ -91,7 +91,7 @@ Caddy in production ([Deployment](deployment.md)).
   export and the erasure), conversation, message, attachment (storage, scan, purge), live, outbox, push, safety
   (requests, blocks, reports), config (security, web, rate limits, metrics, production) and context (the database
   session).
-- 214 tests in 47 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- 216 tests in 47 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - Capacity (`backend/perf`, measured on one laptop with ClamAV on and 5,000 people connected): one instance on 2 CPUs
   holds about 1,500 people active at once (2,000 with messages 4 s late), on 4 CPUs about 3,000; at 2 CPUs its CPUs
   are the limit, at 4 its database pools, now sized from the CPUs (20 and 10 on 4, as measured). Whether that is 3
