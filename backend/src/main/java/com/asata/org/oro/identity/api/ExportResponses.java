@@ -15,10 +15,15 @@ final class ExportResponses {
     }
 
     static void write(HttpServletResponse response, UUID identityId, ExportService exports) throws IOException {
+        write(response, identityId, null, exports);
+    }
+
+    /** organizationId: only what is in its conversations; null: everything */
+    static void write(HttpServletResponse response, UUID identityId, UUID organizationId, ExportService exports) throws IOException {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"oro-export.json\"");
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-        exports.write(identityId, response.getOutputStream());
+        exports.write(identityId, organizationId, response.getOutputStream());
     }
 }

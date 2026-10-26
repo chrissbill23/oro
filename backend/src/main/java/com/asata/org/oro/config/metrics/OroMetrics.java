@@ -81,7 +81,8 @@ public class OroMetrics {
                         FROM oro_attachment WHERE upload_status = 'uploaded' AND scan_status = 'pending' AND deleted_at IS NULL""");
                 Map<String, Object> erasures = session.jdbc().queryForMap("""
                         SELECT count(*) AS pending, coalesce(extract(epoch FROM now() - min(requested_at)), 0) AS oldest
-                        FROM oro_erasure WHERE completed_at IS NULL""");
+                        FROM (SELECT requested_at FROM oro_erasure WHERE completed_at IS NULL
+                              UNION ALL SELECT requested_at FROM oro_organization_erasure WHERE completed_at IS NULL) e""");
                 Map<String, Object> archiver = session.jdbc().queryForMap("""
                         SELECT extract(epoch FROM now() - last_archived_time) AS age, failed_count AS failed,
                                last_failed_time > coalesce(last_archived_time, '-infinity') AS failing

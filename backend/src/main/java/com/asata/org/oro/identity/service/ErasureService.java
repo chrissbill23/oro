@@ -15,7 +15,9 @@ import java.util.UUID;
  * The erasure of a person's data in Oro (oro_erasure, oro_erase_identity): asked by the person (self) or by its
  * product's integration, the identity deactivated at once (its conversations left, its streams closed), then erased a
  * batch at a time by the worker (ErasureScheduler): its messages become deletions, its reactions and uploads go, the
- * messages of others that name it name an anonymous id, and so does the identity at the end.
+ * messages of others that name it name an anonymous id, and so does the identity at the end. Or in one organization
+ * only (oro_organization_erasure, oro_erase_identity_in_organization; Umoja, asked by the organization): the same in
+ * its conversations, the identity and its other organizations untouched.
  */
 @Slf4j
 @Service
@@ -42,6 +44,25 @@ public class ErasureService {
         return true;
     }
 
+    /**
+     * the erasure of what this person has in one organization asked (Umoja); false when Oro has nothing of it. Asked
+     * twice before it is done: once
+     */
+    @Transactional(transactionManager = DbSession.SYSTEM_TRANSACTION_MANAGER)
+    public boolean requestInOrganization(Product product, String externalUserId, UUID organizationId) {
+        Optional<UUID> identity = identities.find(product, externalUserId);
+        if (identity.isEmpty()) {
+            return false;
+        }
+        session.enterSystem();
+        session.jdbc().update("""
+                INSERT INTO oro_organization_erasure(identity_id, product_id, organization_id) VALUES (?, ?, ?)
+                ON CONFLICT (identity_id, organization_id) WHERE completed_at IS NULL DO NOTHING""",
+                identity.get(), product.code(), organizationId);
+        log.info("erasure of identity {} in organization {} asked", identity.get(), organizationId);
+        return true;
+    }
+
     /** the erasure of one identity carried out, batch after batch (each its own transaction); the rows changed */
     public long erase(UUID identityId) {
         long total = 0;
@@ -60,7 +81,31 @@ public class ErasureService {
                     "SELECT identity_id FROM oro_erasure WHERE completed_at IS NULL ORDER BY requested_at LIMIT 20", UUID.class);
         });
         pending.forEach(this::erase);
-        return pending.size();
+        List<UUID> inOrganizations = session.systemTransaction().execute(status -> {
+            session.enterSystem();
+            return session.jdbc().queryForList(
+                    "SELECT id FROM oro_organization_erasure WHERE completed_at IS NULL ORDER BY requested_at LIMIT 20", UUID.class);
+        });
+        inOrganizations.forEach(this::eraseInOrganization);
+        return pending.size() + inOrganizations.size();
+    }
+
+    /** one erasure in an organization carried out, batch after batch; the rows changed */
+    public long eraseInOrganization(UUID erasureId) {
+        long total = 0;
+        while (true) {
+            Integer changed = session.systemTransaction().execute(status -> {
+                session.enterSystem();
+                return session.jdbc().queryForObject("SELECT oro_erase_identity_in_organization(?, ?)", Integer.class,
+                        erasureId, BATCH);
+            });
+            if (changed == null || changed == 0) {
+                break;
+            }
+            total += changed;
+        }
+        log.info("erasure {} in an organization done: {} rows changed", erasureId, total);
+        return total;
     }
 
     private int step(UUID identityId) {

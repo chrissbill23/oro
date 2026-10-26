@@ -43,15 +43,19 @@ public interface IntegrationApi {
 
     @Operation(summary = "Erase the data of an identity", description = "Its messages become deletions, its reactions "
             + "and files go, nothing that stays links to the person; deactivated at once, erased within a minute. 202, "
-            + "whether Oro had something of it or not")
+            + "whether Oro had something of it or not. With organizationId: in the conversations of that organization "
+            + "only (asked by the organization); the identity, its access and its other organizations untouched")
     @PostMapping("/identities/{userId}/erase")
     @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
-    void erase(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId);
+    void erase(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId,
+               @RequestParam(required = false) UUID organizationId);
 
     @Operation(summary = "Export the data of an identity", description = "For the organization to answer a request of "
-            + "access: what the person wrote and did in Oro, as JSON (as GET /me/export). 404 when Oro has nothing of it")
+            + "access: what the person wrote and did in Oro, as JSON (as GET /me/export). With organizationId: in the "
+            + "conversations of that organization only (asked by the organization). 404 when Oro has nothing of it")
     @GetMapping(value = "/identities/{userId}/export", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
     void export(@Parameter(hidden = true) @AuthenticationPrincipal Product product, @PathVariable String userId,
+                @RequestParam(required = false) UUID organizationId,
                 @Parameter(hidden = true) jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException;
 
     @Operation(summary = "Synchronize an organization (Umoja)",

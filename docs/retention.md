@@ -40,10 +40,19 @@ or Umoja for one of its people (`POST /internal/identities/{userId}/erase`; Umoj
 
 Then the backups hold it for 21 days at most, as any deletion.
 
+**In one organization only.** A Umoja person may belong to several organizations. When one of them asks (its owners,
+from the person's page in Umoja: `POST /internal/identities/{userId}/erase?organizationId=`), the erasure stays in
+that organization's conversations: its messages there become deletions, its reactions and files there go, and the
+messages there that name it name a random `erased-...` id, forgotten once the erasure is done. Its identity, its access
+(Umoja's synchronization decides it) and its other organizations are untouched. The whole erasure above is for the
+person's whole account.
+
 ## Exporting a person's data
 
 A person gets a copy of its data in Oro as a JSON file: an Oro person itself (`GET /me/export`), or Umoja for one of
-its people (`GET /internal/identities/{userId}/export`; Umoja's people ask their organization). It holds its identity,
+its people (`GET /internal/identities/{userId}/export`; Umoja's people ask their organization, whose owners download it
+from the person's page in Umoja). Asked by an organization, the export holds what is in that organization's
+conversations only: a person in several organizations never has one see what it wrote in another. It holds its identity,
 its organizations, its conversations (their names, when it joined and left), every message it sent (a deleted one as a
 deletion, its text gone), its reactions, the names and sizes of the files it sent, the people it blocked, the reports
 it made, and its devices for the notifications. Not the messages of the others (they are theirs; the conversations

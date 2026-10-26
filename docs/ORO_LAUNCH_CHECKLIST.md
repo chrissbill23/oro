@@ -37,7 +37,7 @@ Two launches:
 - [ ] The privacy notice and Umoja's processing terms match what the system does (`ORO-LCH-018`)
 - [ ] A person's data can be exported and erased on request, and Umoja's administrators have a way to ask for it
       (`ORO-LCH-002`, `ORO-LCH-018`)
-- [ ] All the tests (201 today) pass in CI on the release commit (`ORO-LCH-017`)
+- [ ] All the tests (203 today) pass in CI on the release commit (`ORO-LCH-017`)
 
 ## 3. Data recovery
 

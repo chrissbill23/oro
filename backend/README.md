@@ -118,6 +118,7 @@ no RLS, no PL/pgSQL triggers and no `SKIP LOCKED`, and those are what the tests 
 | `WebPushCryptoTest` | The encryption of RFC 8291 against its own example, byte for byte; the VAPID keys and their ES256 signature |
 | `PushTest` | Against a push service of the test: someone away gets who and where, never the text (decrypted with the browser's key), signed by Oro; nobody connected, muted or not accepted; a subscription gone removed; the endpoints of unknown services refused |
 | `SafetyTest` | A stranger's request (one message, accepted), people of a group are no strangers, decline and block, a block both ways and on groups (the database too), invitations, a report kept after the sender deletes, purged at 90 days, never read by the API; blocks erased with their person |
+| `OrganizationScopeTest` | A Umoja person in two organizations: the export and the erasure asked by one reach its conversations only; the other's messages and files unchanged, the identity as it was, the anonymous id forgotten once done |
 | `ExportTest` | An export holds what the person wrote and did (deletions without their text, reactions, files' names, blocks), never the others' messages; every message across pages; Umoja's people through their organization; 404 for nobody |
 | `ErasureTest` | An erasure by Umoja and by the person: its messages deletions, its reactions and uploads gone, the mentions and system messages anonymous and not marked edited, nothing names it; idempotent; the person comes back as someone new; the flag of the erasure hides no user's edit |
 | `PasswordResetTest` | A reset by link ends every session (Umoja's too), unlocks and verifies; the same answer for an unknown address; a verification link resets nothing; the limits per address and per recipient |
@@ -210,8 +211,8 @@ carries an `x-request-id` header.
 | `GET /presence` | Who is online in the caller's context |
 | `PUT /internal/identities/{userId}` | Integration: provisions an identity |
 | `POST /internal/identities/{userId}/suspend`, `/reactivate`, `/deactivate` | Integration: changes an identity's status |
-| `POST /internal/identities/{userId}/erase` | Integration: erases the data of one of its people (202) |
-| `GET /internal/identities/{userId}/export` | Integration: the data of one of its people as JSON, as `GET /me/export`; 404 when Oro has nothing of it |
+| `POST /internal/identities/{userId}/erase[?organizationId=]` | Integration: erases the data of one of its people (202); with `organizationId`, in that organization's conversations only (the identity and its other organizations untouched) |
+| `GET /internal/identities/{userId}/export[?organizationId=]` | Integration: the data of one of its people as JSON, as `GET /me/export`; with `organizationId`, in that organization's conversations only; 404 when Oro has nothing of it |
 | `PUT`, `DELETE /internal/organizations/{organizationId}/members/{userId}` | Umoja integration: grants or revokes an organization access |
 | `PUT /internal/organizations/{organizationId}` `{version, memberUserIds, teams: [{teamId, name, memberUserIds}]}` | Umoja integration: the organization as it is now (see [Team chats](#team-chats-and-the-umoja-synchronization)) |
 

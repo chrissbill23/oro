@@ -24,7 +24,9 @@ import java.util.function.Function;
  * deletions: their text is gone), its reactions, the files it sent (their names and sizes; the files themselves are in
  * their conversations), the people it blocked, the reports it made, its devices for the notifications. Not the
  * messages of the others: they are theirs (the conversations show them). The messages are read by pages of 1,000,
- * each in its own short transaction: a slow download never holds a connection of the database.
+ * each in its own short transaction: a slow download never holds a connection of the database. For one organization
+ * (Umoja: asked by it), only what is in its conversations: never the person's other organizations, nor what is not of
+ * an organization (blocks, reports, devices).
  */
 @Slf4j
 @Service
@@ -44,12 +46,23 @@ public class ExportService {
                 .orElseThrow(() -> new NotFound("Oro has no data of this person"));
     }
 
+    /** everything of the identity */
     public void write(UUID identityId, OutputStream out) {
+        write(identityId, null, out);
+    }
+
+    /** organizationId: only what is in the conversations of this organization; null: everything */
+    public void write(UUID identityId, UUID organizationId, OutputStream out) {
         long messages = 0;
+        // the conversation c of each row in the organization, when there is one (a UUID: never text of a request)
+        String inOrganization = organizationId == null ? "" : " AND c.organization_id = '" + organizationId + "'";
         try (JsonGenerator generator = json.createGenerator(out)) {
             generator.writeStartObject();
             generator.writeStringProperty("format", "oro-export/1");
             generator.writeStringProperty("exportedAt", Instant.now().toString());
+            if (organizationId != null) {
+                generator.writeStringProperty("organizationId", organizationId.toString());
+            }
             generator.writeName("identity");
             generator.writePOJO(clean(read(jdbc -> jdbc.queryForMap("""
                     SELECT external_user_id AS "userId", product_id AS product, status, created_at AS "createdAt",
@@ -57,12 +70,12 @@ public class ExportService {
                     FROM oro_messaging_identity WHERE id = ?""", identityId))));
             section(generator, "organizations", """
                     SELECT organization_id AS "organizationId", granted_at AS "grantedAt", revoked_at AS "revokedAt"
-                    FROM oro_organization_access WHERE identity_id = ? ORDER BY granted_at""", identityId);
+                    FROM oro_organization_access c WHERE identity_id = ?""" + inOrganization + " ORDER BY granted_at", identityId);
             section(generator, "conversations", """
                     SELECT c.id, c.conversation_type AS type, c.name, m.role, m.joined_at AS "joinedAt", m.left_at AS "leftAt",
                            m.left_reason AS "leftReason", m.muted_until AS "mutedUntil", m.last_read_at AS "lastReadAt"
                     FROM oro_conversation_member m JOIN oro_conversation c ON c.id = m.conversation_id
-                    WHERE m.user_id = ? ORDER BY m.joined_at""", identityId);
+                    WHERE m.user_id = ?""" + inOrganization + " ORDER BY m.joined_at", identityId);
 
             generator.writeName("messagesSent");
             generator.writeStartArray();
@@ -72,10 +85,13 @@ public class ExportService {
                 Timestamp fromAt = afterAt;
                 UUID fromId = afterId;
                 List<Map<String, Object>> page = read(jdbc -> jdbc.queryForList("""
-                        SELECT id, conversation_id AS "conversationId", seq, message_type AS type, body, metadata::text AS metadata,
-                               created_at AS "createdAt", edited_at AS "editedAt", deleted_at AS "deletedAt"
-                        FROM oro_message WHERE sender_id = ? AND (created_at, id) > (?, ?)
-                        ORDER BY created_at, id LIMIT ?""", identityId, fromAt, fromId, PAGE));
+                        SELECT m.id, m.conversation_id AS "conversationId", m.seq, m.message_type AS type, m.body,
+                               m.metadata::text AS metadata, m.created_at AS "createdAt", m.edited_at AS "editedAt",
+                               m.deleted_at AS "deletedAt"
+                        FROM oro_message m JOIN oro_conversation c ON c.id = m.conversation_id
+                        WHERE m.sender_id = ? AND (m.created_at, m.id) > (?, ?)""" + inOrganization + """
+
+                        ORDER BY m.created_at, m.id LIMIT ?""", identityId, fromAt, fromId, PAGE));
                 for (Map<String, Object> message : page) {
                     afterAt = (Timestamp) message.get("createdAt");
                     afterId = (UUID) message.get("id");
@@ -90,26 +106,33 @@ public class ExportService {
             generator.writeEndArray();
 
             section(generator, "reactions", """
-                    SELECT message_id AS "messageId", conversation_id AS "conversationId", emoji, created_at AS "createdAt"
-                    FROM oro_message_reaction WHERE user_id = ? ORDER BY created_at""", identityId);
+                    SELECT r.message_id AS "messageId", r.conversation_id AS "conversationId", r.emoji, r.created_at AS "createdAt"
+                    FROM oro_message_reaction r JOIN oro_conversation c ON c.id = r.conversation_id
+                    WHERE r.user_id = ?""" + inOrganization + " ORDER BY r.created_at", identityId);
             section(generator, "filesSent", """
-                    SELECT id, conversation_id AS "conversationId", message_id AS "messageId", file_name AS "fileName",
-                           mime_type AS "mimeType", size_bytes AS "sizeBytes", created_at AS "createdAt", deleted_at AS "deletedAt"
-                    FROM oro_attachment WHERE uploaded_by = ? ORDER BY created_at""", identityId);
-            section(generator, "blocked", """
-                    SELECT i.external_user_id AS "userId", b.created_at AS "createdAt"
-                    FROM oro_identity_block b JOIN oro_messaging_identity i ON i.id = b.blocked_id
-                    WHERE b.blocker_id = ? ORDER BY b.created_at""", identityId);
-            section(generator, "reportsMade", """
-                    SELECT id, conversation_id AS "conversationId", category, reason, created_at AS "createdAt"
-                    FROM oro_report WHERE reporter_id = ? ORDER BY created_at""", identityId);
-            section(generator, "notificationDevices", """
-                    SELECT user_agent AS "userAgent", created_at AS "createdAt", last_sent_at AS "lastSentAt"
-                    FROM oro_push_subscription WHERE identity_id = ? ORDER BY created_at""", identityId);
+                    SELECT a.id, a.conversation_id AS "conversationId", a.message_id AS "messageId", a.file_name AS "fileName",
+                           a.mime_type AS "mimeType", a.size_bytes AS "sizeBytes", a.created_at AS "createdAt",
+                           a.deleted_at AS "deletedAt"
+                    FROM oro_attachment a JOIN oro_conversation c ON c.id = a.conversation_id
+                    WHERE a.uploaded_by = ?""" + inOrganization + " ORDER BY a.created_at", identityId);
+            // not of an organization: in the export of everything only
+            if (organizationId == null) {
+                section(generator, "blocked", """
+                        SELECT i.external_user_id AS "userId", b.created_at AS "createdAt"
+                        FROM oro_identity_block b JOIN oro_messaging_identity i ON i.id = b.blocked_id
+                        WHERE b.blocker_id = ? ORDER BY b.created_at""", identityId);
+                section(generator, "reportsMade", """
+                        SELECT id, conversation_id AS "conversationId", category, reason, created_at AS "createdAt"
+                        FROM oro_report WHERE reporter_id = ? ORDER BY created_at""", identityId);
+                section(generator, "notificationDevices", """
+                        SELECT user_agent AS "userAgent", created_at AS "createdAt", last_sent_at AS "lastSentAt"
+                        FROM oro_push_subscription WHERE identity_id = ? ORDER BY created_at""", identityId);
+            }
             generator.writeEndObject();
         }
         // the identity only: never what the export holds
-        log.info("export of identity {}: {} message(s)", identityId, messages);
+        log.info("export of identity {}{}: {} message(s)", identityId,
+                organizationId == null ? "" : " in organization " + organizationId, messages);
     }
 
     private void section(JsonGenerator generator, String name, String sql, UUID identityId) {

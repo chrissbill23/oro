@@ -24,7 +24,8 @@ Caddy in production ([Deployment](deployment.md)).
 - Oro accounts: Oro's people sign up, verify their email, sign in and recover their password with their Asata account
   (the one of Umoja and Mokili); Oro signs their tokens.
 - A person's data: exported as a JSON file, or erased (their messages become deletions, nothing that stays names
-  them). Oro's people do it themselves; Umoja's people ask their organization, which asks Oro.
+  them). Oro's people do it themselves; for Umoja's people, the owners of their organization do it from their page,
+  in that organization's conversations only.
 
 ## Security and privacy
 
@@ -86,7 +87,7 @@ Caddy in production ([Deployment](deployment.md)).
   export and the erasure), conversation, message, attachment (storage, scan, purge), live, outbox, push, safety
   (requests, blocks, reports), config (security, web, rate limits, metrics, production) and context (the database
   session).
-- 201 tests in 42 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- 203 tests in 43 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
 - Capacity: the query plans on 10 million messages and the load test are in `backend/perf`. One instance on 2 CPUs
   holds about 1,500 people active at once with 5,000 connected, and breaks at about 2,000; Oro's CPUs are the limit.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
@@ -100,7 +101,7 @@ Caddy in production ([Deployment](deployment.md)).
 - Phone accounts for Oro (email accounts work: sign-up, verification, sign-in, recovery), and a screen to review the
   reports.
 - A privacy notice and the terms for Umoja's customers (the retention is written, [Retention](retention.md), and the
-  export and erasure exist); a screen in Umoja that calls the export and the erasure.
+  export and erasure exist, Umoja's owners use them).
 - Who is on call, and the runbooks rehearsed on a staging server, a recovery in place among them ([Runbooks](runbooks.md)).
 - An alert receiver, the off-server backup buckets, and an SMTP provider for the accounts' emails.
 - Object storage for the files (not needed while they stay on a backed-up volume of one server).

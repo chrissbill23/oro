@@ -44,8 +44,12 @@ public class IntegrationController implements IntegrationApi {
     }
 
     @Override
-    public void erase(Product product, String userId) {
-        erasures.request(product, userId, "integration");
+    public void erase(Product product, String userId, UUID organizationId) {
+        if (organizationId != null) {
+            erasures.requestInOrganization(product, userId, organizationId);
+        } else {
+            erasures.request(product, userId, "integration");
+        }
     }
 
     @Override
@@ -82,8 +86,9 @@ public class IntegrationController implements IntegrationApi {
     }
 
     @Override
-    public void export(Product product, String userId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+    public void export(Product product, String userId, UUID organizationId, jakarta.servlet.http.HttpServletResponse response)
+            throws java.io.IOException {
         // the identity first: a 404 before anything is written
-        ExportResponses.write(response, exports.identity(product, userId), exports);
+        ExportResponses.write(response, exports.identity(product, userId), organizationId, exports);
     }
 }
