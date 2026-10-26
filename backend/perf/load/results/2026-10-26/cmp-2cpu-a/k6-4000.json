@@ -1,0 +1,105 @@
+{
+  "stages": "4000:60,4000:120",
+  "list": "events",
+  "busyRate": 0,
+  "uploadRate": 0.01,
+  "uploadKb": 20,
+  "downloadCheck": 1,
+  "durationMs": 210105.563417,
+  "requests": 81030,
+  "requestsPerSecond": 385.66327650819227,
+  "failedRate": null,
+  "iterations": 31956,
+  "vusMax": 4000,
+  "uploadsAvailable": 265,
+  "uploadsPending": 0,
+  "downloadBeforeClean": 0,
+  "thresholdsFailed": [
+    "http_req_duration{name:list}",
+    "http_req_failed",
+    "http_req_duration{name:send}"
+  ],
+  "ops": {
+    "list": {
+      "count": 6729,
+      "p50": 8.460333,
+      "p95": 4056.2640351999994,
+      "p99": 60003.159665,
+      "max": 60019.446625,
+      "outcomes": {
+        "ok": 3661,
+        "network": 3068
+      }
+    },
+    "preview": {
+      "count": 25783,
+      "p50": 3688.562779,
+      "p95": 5052.6282776,
+      "p99": 5623.532783079998,
+      "max": 7439.429004,
+      "outcomes": {
+        "ok": 25783
+      }
+    },
+    "after": {
+      "count": 29444,
+      "p50": 3409.981022,
+      "p95": 4978.3256539,
+      "p99": 5535.3756581299995,
+      "max": 7257.378378,
+      "outcomes": {
+        "ok": 29444
+      }
+    },
+    "send": {
+      "count": 8917,
+      "p50": 3388.15946,
+      "p95": 4945.478877799998,
+      "p99": 5536.484533999999,
+      "max": 7594.785364,
+      "outcomes": {
+        "ok": 8917
+      }
+    },
+    "read": {
+      "count": 8652,
+      "p50": 3182.7717305,
+      "p95": 4630.0207126,
+      "p99": 5116.76186516,
+      "max": 6701.84117,
+      "outcomes": {
+        "ok": 8652
+      }
+    },
+    "search": {
+      "count": 975,
+      "p50": 3378.479946,
+      "p95": 4984.3460565,
+      "p99": 5842.6858144200005,
+      "max": 8247.354407,
+      "outcomes": {
+        "ok": 975
+      }
+    },
+    "upload": {
+      "count": 265,
+      "p50": 3275.47096,
+      "p95": 4801.3097686,
+      "p99": 5264.072049,
+      "max": 5358.383586,
+      "outcomes": {
+        "ok": 265
+      }
+    },
+    "download": {
+      "count": 265,
+      "p50": 3215.278876,
+      "p95": 4614.824293199999,
+      "p99": 5121.84716924,
+      "max": 5695.031503,
+      "outcomes": {
+        "ok": 265
+      }
+    }
+  }
+}

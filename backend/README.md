@@ -410,8 +410,13 @@ to it. So a client, on **every** `hello` (the first one too):
 3. reads that conversation again (`GET /conversations/{id}`): its members and their read positions.
 
 Until a stream is open, the client reads the list every so often instead. Between two `hello`, the events are
-enough. A client that follows this misses nothing, without ids of events or a replay: `CatchUpTest` checks it over
-HTTP (a stream cut, two messages sent, the stream back), and Umoja's client does it (`MessagingStore`, `ChatPanel`).
+enough, read this way: on a new message (`message`, `created`) of the open conversation, the client reads after the
+**last message it shows** (`?after=`), not after the event's seq. The seqs of a conversation follow each other, so a
+message past the next one is a gap (messages committed while the stream was down, or while the client caught up):
+jumping to the event's seq would lose them. The `hello` is always the first event of a stream. A client that follows this misses nothing, without ids of events or a replay: `CatchUpTest` checks it over
+HTTP (a stream cut, two messages sent, the stream back), the load test under load and across restarts of Oro
+(`perf/README.md`, Restart under load: none of about 58,000 messages lost), and Umoja's client does it
+(`MessagingStore`, `ChatPanel`).
 What is older than the newest page and changed during a gap shows on the next load of the conversation.
 
 ## Schema
@@ -788,6 +793,7 @@ What Oro measures, besides the requests by route and status (`http_server_reques
 | `oro_outbox_pending`, `oro_outbox_failed`, `oro_outbox_oldest_pending_seconds` | The outbox: waiting, failed for good, the lag of the live events |
 | `oro_attachments_scan_pending`, `oro_attachments_scan_oldest_pending_seconds` | The files waiting for their malware scan |
 | `oro_attachments_scanned_total{result}` | The scans: clean, infected, failed |
+| `oro_attachments_scan_duration_seconds{result}` | How long each scan took (clean, infected, failed, unavailable), with its histogram: the cost of the scan in an upload |
 | `oro_attachments_disk_free_bytes` | The free space of the disk of the files |
 | `oro_rate_limit_refused_total{kind}` | The requests refused by a rate limit |
 | `oro_wal_archive_age_seconds`, `oro_wal_archive_failed` | The WAL archiving of the database (point-in-time recovery) |

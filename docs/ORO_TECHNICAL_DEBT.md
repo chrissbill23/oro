@@ -114,11 +114,30 @@ The choices that limit Oro today, why they were made, what they risk, and when t
 - **Today**: `LiveHub` keeps the streams and who is online in the memory of the instance, and `RateLimiter` the
   buckets of the rate limits (a restart refills them; two instances would each allow the full rate).
 - **Why**: no message broker, nothing more to run.
-- **Risk**: one instance is a single point of failure; a restart drops every stream (clients reconnect and catch up);
-  capacity is bounded by one machine: about 1,500 people active at once with 5,000 connected on 2 CPUs, breaking
-  at about 2,000; Oro's CPUs are the limit, not the database (`backend/perf`, run 3, 2026-10-24).
+- **Risk**: one instance is a single point of failure; a restart drops every stream (clients reconnect and catch up:
+  measured under load, nothing lost, all back within 73 to 84 s, `backend/perf`, 2026-10-26); capacity is bounded
+  by one machine: about 1,500 people active at once with 5,000 connected on 2 CPUs, 3,000 on 4 CPUs (ClamAV on); at
+  4 CPUs the database pools are the limit before the CPUs.
 - **Revisit**: when the availability target needs a second instance, CPU passes 60 % at peak, or open streams pass
   ~10k. Use PostgreSQL `LISTEN/NOTIFY` first; Redis only if it is measured to be insufficient (`ORO-SCL-006`).
+
+### Presence passes over every stream
+
+- **Today**: each user coming online or going offline is told to its organization by a pass over every stream of the
+  instance (`LiveHub.presence`), and so is each new stream's hello (who is online).
+- **Why**: simple, and cheap at today's numbers in the steady state.
+- **Risk**: it grows with the streams squared when they all move at once: 5,000 streams coming back after a restart
+  sent 1.25 million presence events; a stop did the same (5,000 × 5,000) until presence was skipped while stopping
+  (2026-10-26).
+- **Revisit**: when streams pass a few thousand per organization, or a reconnection of everyone shows in the CPU:
+  index the streams by organization.
+
+### Every request checks its identity and access as `oro_system`
+
+- **Today**: `ActorResolver` runs two system transactions per request (the identity, the organization access) on the
+  system pool of 5, shared with the outbox and the scans.
+- **Risk**: at 4 CPUs and 3,000 people the system pool waits (up to 43 requests); in the CPU profile about 3 %.
+- **Revisit**: first a larger pool (measured: 10 helps); then a cache of a few seconds, revoked with the access.
 
 ### A queue and a writer per stream
 

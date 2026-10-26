@@ -61,6 +61,8 @@ Two launches:
       (`ORO-LCH-009`, `ORO-TST-009`)
 - [ ] The previous backend version runs on the new schema (rollback possible)
 - [ ] A restart loses no event and every client reconnects (`ORO-LCH-012`, `ORO-LCH-014`)
+      Measured on the local stack under load (2026-10-26): no message lost, every client back and caught up; open:
+      they reconnect 12 to 35 s after readiness, not "within seconds" (their retry delays), and not yet on staging.
 - [ ] The image runs as a non-root user (done: `USER ubuntu` in `backend/Dockerfile`) and is pinned to a digest
 - [ ] Staging matches production, and the release ran there first
 
@@ -69,6 +71,8 @@ Two launches:
 - [ ] Query plans checked on realistic data (`ORO-SCL-001`)
 - [ ] A slow client cannot hold up the others' events (`ORO-SCL-004`)
 - [ ] The load test shows at least 3 times the expected peak; pools sized from it (`ORO-SCL-007`, `ORO-SCL-009`)
+      Measured (2026-10-26, one laptop, ClamAV on): 1,500 people active on 2 CPUs, 3,000 on 4. Open: the expected
+      peak is not given, nor the accepted latency; at 4 CPUs the pools (10, 5) are the limit.
 
 ## 7. Operations
 

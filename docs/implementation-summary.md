@@ -80,6 +80,8 @@ Caddy in production ([Deployment](deployment.md)).
   and 443 are open.
 - Health: the container is healthy when Oro is ready (the database too), and restarted when Oro stops answering. A
   stop is graceful: the streams are told to reconnect, the outbox finishes its batch, the requests in flight finish.
+  Measured under load (1,500 people, 5,000 streams): ready again 13 to 30 s after the stop, no message lost, every
+  client back and caught up within about a minute and a half (their retry delays are most of it).
 
 ## Code and tests
 
@@ -87,9 +89,10 @@ Caddy in production ([Deployment](deployment.md)).
   export and the erasure), conversation, message, attachment (storage, scan, purge), live, outbox, push, safety
   (requests, blocks, reports), config (security, web, rate limits, metrics, production) and context (the database
   session).
-- 203 tests in 43 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
-- Capacity: the query plans on 10 million messages and the load test are in `backend/perf`. One instance on 2 CPUs
-  holds about 1,500 people active at once with 5,000 connected, and breaks at about 2,000; Oro's CPUs are the limit.
+- 204 tests in 43 classes, on a PostgreSQL 17 container (Testcontainers) built by the real schema script.
+- Capacity (`backend/perf`, measured on one laptop with ClamAV on and 5,000 people connected): one instance on 2 CPUs
+  holds about 1,500 people active at once (2,000 with messages 4 s late), on 4 CPUs about 3,000; at 2 CPUs its CPUs
+  are the limit, at 4 its database pools. Whether that is 3 times the peak is not known: no expected peak is given.
 - The schema is in `1_ASATA_DATABASE/CREATE_ORO_TABLES.sql`, its migrations in `1_ASATA_DATABASE/oro/migrations/`, the
   development data in `1_ASATA_DATABASE/oro/INSERT.sql`.
 - Umoja already uses Oro: its frontend has a Messages page (its list follows the live events instead of being read

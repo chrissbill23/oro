@@ -1,0 +1,112 @@
+{
+  "stages": "1500:60,1500:120",
+  "list": "events",
+  "busyRate": 0,
+  "uploadRate": 0.01,
+  "uploadKb": 20,
+  "downloadCheck": 1,
+  "durationMs": 196659.349842,
+  "requests": 59000,
+  "requestsPerSecond": 300.01116167322715,
+  "failedRate": null,
+  "iterations": 22699,
+  "vusMax": 1500,
+  "uploadsAvailable": 171,
+  "uploadsPending": 0,
+  "downloadBeforeClean": 0,
+  "thresholdsFailed": [
+    "http_req_duration{name:send}",
+    "http_req_failed"
+  ],
+  "ops": {
+    "list": {
+      "count": 1927,
+      "p50": 16.424208,
+      "p95": 494.1041457999999,
+      "p99": 1803.6803693399995,
+      "max": 6286.299794,
+      "outcomes": {
+        "ok": 1842,
+        "network": 85
+      }
+    },
+    "preview": {
+      "count": 20772,
+      "p50": 4.9709375,
+      "p95": 1443.6316901999978,
+      "p99": 5439.769723319999,
+      "max": 6309.963712,
+      "outcomes": {
+        "ok": 17242,
+        "network": 3530
+      }
+    },
+    "after": {
+      "count": 22699,
+      "p50": 4.295208,
+      "p95": 967.418909,
+      "p99": 1340.1226506799994,
+      "max": 6044.286712,
+      "outcomes": {
+        "ok": 18931,
+        "network": 3768
+      }
+    },
+    "send": {
+      "count": 6902,
+      "p50": 8.170917,
+      "p95": 911.9744795,
+      "p99": 1309.98322567,
+      "max": 5300.239961,
+      "outcomes": {
+        "ok": 5806,
+        "client_error": 1,
+        "network": 1095
+      }
+    },
+    "read": {
+      "count": 5637,
+      "p50": 3.79925,
+      "p95": 589.8193338,
+      "p99": 1245.74674,
+      "max": 5750.224419,
+      "outcomes": {
+        "ok": 5604,
+        "network": 33
+      }
+    },
+    "search": {
+      "count": 684,
+      "p50": 23.295896,
+      "p95": 893.1486508999996,
+      "p99": 1339.99642564,
+      "max": 1560.188917,
+      "outcomes": {
+        "ok": 561,
+        "network": 123
+      }
+    },
+    "upload": {
+      "count": 208,
+      "p50": 18.2454375,
+      "p95": 991.9228406999998,
+      "p99": 1331.67870468,
+      "max": 1444.437209,
+      "outcomes": {
+        "ok": 171,
+        "network": 37
+      }
+    },
+    "download": {
+      "count": 171,
+      "p50": 4.445625,
+      "p95": 606.8556669999996,
+      "p99": 1234.0250509,
+      "max": 1376.556084,
+      "outcomes": {
+        "ok": 170,
+        "network": 1
+      }
+    }
+  }
+}

@@ -166,6 +166,11 @@ public class LiveHub implements SmartLifecycle {
         Scope scope = Scope.of(actor);
         Connection connection = new Connection(emitter, actor.identityId(), userId, scope, expiresAt, new Outgoing(queueCapacity));
         boolean first = !isOnline(actor.identityId(), scope);
+        // the hello first in its queue, before the stream can be given any event: a client catches up on its hello,
+        // an event before it would come from before what it reads then (the online: as once it is registered)
+        Set<String> online = online(scope);
+        online.add(userId);
+        send(connection, Map.of("type", "hello", "online", online));
         connections.computeIfAbsent(actor.identityId(), id -> new CopyOnWriteArraySet<>()).add(connection);
         open.incrementAndGet();
         // the stream ended by the server (its end, a timeout) or by the client (an error of the connection)
@@ -176,7 +181,6 @@ public class LiveHub implements SmartLifecycle {
         // the token ends: the client opens a new stream, with a new token
         expiries.put(connection, expirer.schedule(() -> close(connection, true),
                 Math.max(0, Duration.between(now, expiresAt).toMillis()), TimeUnit.MILLISECONDS));
-        send(connection, Map.of("type", "hello", "online", online(scope)));
         if (first) {
             presence(connection, true);
         }
@@ -384,7 +388,9 @@ public class LiveHub implements SmartLifecycle {
         }
         open.decrementAndGet();
         connections.computeIfPresent(connection.identityId(), (id, rest) -> rest.isEmpty() ? null : rest);
-        if (!isOnline(connection.identityId(), connection.scope())) {
+        // stopping, every stream closes: no "offline" to the others (each would cost a pass over all the streams: a
+        // stop under load with 5,000 streams did not end within 45 s)
+        if (!stopping && !isOnline(connection.identityId(), connection.scope())) {
             presence(connection, false);
         }
     }

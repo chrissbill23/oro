@@ -1,0 +1,40 @@
+1793009373557 streams open 5000, hellos 5000, failures 0, events {hello=5000, presence=1247001}
+1793009383601 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=4, presence=1247001}
+1793009393603 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=842, presence=1247001}
+1793009403611 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=2200, presence=1247001}
+1793009413616 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=6050, presence=1247001}
+1793009423622 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=11954, presence=1247001}
+1793009433623 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=17087, presence=1247001}
+1793009443631 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=18963, presence=1247001}
+1793009453640 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=19913, presence=1247001}
+1793009463650 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=30731, presence=1247001}
+1793009473653 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=46694, presence=1247001}
+1793009483658 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=69672, presence=1247001}
+1793009493666 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=103147, presence=1247001}
+1793009503667 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=144891, presence=1247001}
+1793009513673 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=185621, presence=1247001}
+1793009523679 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=224395, presence=1247001}
+1793009533733 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=266111, presence=1247001}
+1793009543736 streams open 5000, hellos 5000, failures 0, events {hello=5000, message=311645, presence=1247001}
+1793009553737 streams open 4911, hellos 5000, failures 56, events {hello=5000, message=340131, presence=1289791, reconnect=89}
+1793009563740 streams open 4758, hellos 5000, failures 403, events {hello=5000, message=349201, presence=1378438, reconnect=261}
+1793009573743 streams open 4535, hellos 5000, failures 961, events {hello=5000, message=363639, presence=1477003, reconnect=494}
+1793009583747 streams open 4313, hellos 5000, failures 1696, events {hello=5000, message=377468, presence=1604126, reconnect=726}
+1793009593756 streams open 4091, hellos 5000, failures 2510, events {hello=5000, message=392379, presence=1727228, reconnect=979}
+1793009603761 streams open 95, hellos 5095, failures 15393, events {hello=5095, message=392824, presence=1732102, reconnect=1008}
+1793009613764 streams open 792, hellos 5792, failures 15393, events {hello=5792, message=395269, presence=1798571, reconnect=1008}
+1793009623765 streams open 2416, hellos 7416, failures 15393, events {hello=7416, message=401036, presence=2042511, reconnect=1008}
+1793009633769 streams open 3673, hellos 8673, failures 15393, events {hello=8673, message=402673, presence=2370378, reconnect=1008}
+1793009643772 streams open 4365, hellos 9365, failures 15393, events {hello=9365, message=410340, presence=2626572, reconnect=1008}
+1793009653776 streams open 4743, hellos 9743, failures 15393, events {hello=9743, message=422097, presence=2787296, reconnect=1008}
+1793009663786 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009673797 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009683800 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009693808 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009703815 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009713819 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009723838 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009733848 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009743858 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009753879 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}
+1793009763885 streams open 5000, hellos 10000, failures 15393, events {hello=10000, message=449597, presence=2978125, reconnect=1008}

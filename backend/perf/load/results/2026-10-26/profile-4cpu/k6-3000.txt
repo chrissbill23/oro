@@ -1,0 +1,10 @@
+list       n=   3825 p50=22.6 p95=1286.7 p99=1787.3 max=2551 {"ok":3825}
+preview    n=  40694 p50=16.7 p95=1228.7 p99=1838.7 max=3213 {"ok":40694}
+after      n=  44519 p50=14.7 p95=1199.1 p99=1876.4 max=3224 {"ok":44519}
+send       n=  13680 p50=22.1 p95=997.1 p99=1845.7 max=3189 {"ok":13680}
+read       n=  13241 p50=8.0 p95=655.9 p99=1566.1 max=2202 {"ok":13241}
+search     n=   1365 p50=56.4 p95=910.4 p99=1776.6 max=7077 {"ok":1365}
+upload     n=    439 p50=50.2 p95=1045.5 p99=1601.3 max=1772 {"ok":439}
+download   n=    439 p50=10.2 p95=664.6 p99=1641.8 max=2031 {"ok":439}
+requests 118202 (615.7/s), failed 0.00 %, thresholds failed: http_req_duration{name:send}, http_req_duration{name:list}
+time="2026-10-26T10:41:20Z" level=error msg="thresholds on metrics 'http_req_duration{name:list}, http_req_duration{name:send}' have been crossed"

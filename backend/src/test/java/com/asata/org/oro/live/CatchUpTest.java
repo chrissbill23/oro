@@ -72,6 +72,24 @@ class CatchUpTest extends PostgresIntegrationTest {
         throw new AssertionError("the stream ended before its hello");
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private LiveHub hub;
+
+    /** a stream refused while Oro stops: 503 and when to come back, never 500 (the client takes no JSON body) */
+    @Test
+    void aStreamRefusedDuringAStopIsA503() throws Exception {
+        get("/me", amani);
+        hub.stop();
+        try {
+            HttpResponse<String> refused = http.send(request("/stream", amani).header("Accept", "text/event-stream").GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(refused.statusCode()).isEqualTo(503);
+            assertThat(refused.headers().firstValue("Retry-After")).contains("5");
+        } finally {
+            hub.start();
+        }
+    }
+
     @Test
     void aClientWhoseStreamWasCutReadsWhatItMissed() throws Exception {
         get("/me", baraka);

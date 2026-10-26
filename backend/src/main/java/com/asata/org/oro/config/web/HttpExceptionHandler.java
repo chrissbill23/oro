@@ -159,9 +159,27 @@ public class HttpExceptionHandler {
 
     private static ResponseEntity<ErrorDTO> error(HttpServletRequest request, HttpStatus status, String message,
                                                   List<String> messages) {
+        // a client that takes no JSON (a stream: text/event-stream) gets the status alone: with a body it could not
+        // take, Spring would answer 500 instead (a 503 of a restart, a 429 of the limits)
+        if (!acceptsJson(request)) {
+            return ResponseEntity.status(status).build();
+        }
         Object requestId = request.getAttribute(RequestIdFilter.HEADER);
         return ResponseEntity.status(status).body(new ErrorDTO(OffsetDateTime.now(),
                 requestId == null ? "" : requestId.toString(), request.getRequestURI(), status.value(),
                 status.getReasonPhrase(), message, messages));
+    }
+
+    private static boolean acceptsJson(HttpServletRequest request) {
+        String accept = request.getHeader(HttpHeaders.ACCEPT);
+        if (accept == null || accept.isBlank()) {
+            return true;
+        }
+        try {
+            return org.springframework.http.MediaType.parseMediaTypes(accept).stream()
+                    .anyMatch(type -> type.includes(org.springframework.http.MediaType.APPLICATION_JSON));
+        } catch (org.springframework.http.InvalidMediaTypeException e) {
+            return true;
+        }
     }
 }

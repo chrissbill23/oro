@@ -195,13 +195,24 @@ class LiveHubTest {
     void aStopTellsEveryStreamToReconnectAndRefusesNewOnes() {
         hub.start();
         RecordingEmitter amara = connect(UUID.randomUUID(), "amara", ACME);
+        RecordingEmitter kwame = connect(UUID.randomUUID(), "kwame", ACME);
         RecordingEmitter bob = connect(UUID.randomUUID(), "bob", GLOBEX);
         assertThat(hub.isRunning()).isTrue();
+        // the hello first on every stream: nothing comes before what its client catches up from
+        assertThat(List.of(amara, kwame, bob)).allSatisfy(stream ->
+                assertThat(((Map<?, ?>) stream.events.getFirst()).get("type")).isEqualTo("hello"));
+        int presences = amara.ofType("presence").size();
+        int kwamePresences = kwame.ofType("presence").size();
 
         hub.stop();
 
         assertThat(amara.ofType("reconnect")).hasSize(1);
+        assertThat(kwame.ofType("reconnect")).hasSize(1);
         assertThat(bob.ofType("reconnect")).hasSize(1);
+        // everyone is told to reconnect: nobody is told the others went offline (under load, 5,000 streams each telling
+        // the others made the stop last longer than its 45 s)
+        assertThat(amara.ofType("presence")).hasSize(presences);
+        assertThat(kwame.ofType("presence")).hasSize(kwamePresences);
         assertThat(hub.openStreams()).isZero();
         assertThat(hub.isRunning()).isFalse();
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> connect(UUID.randomUUID(), "kwame", ACME))

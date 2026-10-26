@@ -5,6 +5,7 @@ import com.asata.org.oro.attachment.storage.FileStorage;
 import com.asata.org.oro.context.DbSession;
 import com.asata.org.oro.enums.ScanStatus;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -52,9 +53,11 @@ public class AttachmentScanning {
             return ScanStatus.PENDING;
         }
         MalwareScanner.Verdict verdict;
+        long started = System.nanoTime();
         try (InputStream content = files.open(storageKey)) {
             verdict = clamd.scan(content);
         } catch (IOException e) {
+            scanTime("unavailable", started);
             log.warn("attachment {} not scanned yet, the scanner could not be asked: {}", attachmentId, e.getClass().getSimpleName());
             return ScanStatus.PENDING;
         }
@@ -63,6 +66,7 @@ public class AttachmentScanning {
             case INFECTED -> ScanStatus.INFECTED;
             case FAILED -> ScanStatus.FAILED;
         };
+        scanTime(status.code(), started);
         attachments.recordScan(attachmentId, status);
         meters.counter("oro.attachments.scanned", "result", status.code()).increment();
         if (status == ScanStatus.INFECTED) {
@@ -99,5 +103,11 @@ public class AttachmentScanning {
             scanned++;
         }
         return scanned;
+    }
+
+    /** how long clamd took (the file read and sent, its answer), by result: the cost of the scan in an upload */
+    private void scanTime(String result, long started) {
+        Timer.builder("oro.attachments.scan.duration").tag("result", result).publishPercentileHistogram()
+                .register(meters).record(System.nanoTime() - started, java.util.concurrent.TimeUnit.NANOSECONDS);
     }
 }

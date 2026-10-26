@@ -1,0 +1,9 @@
+run: profile-4cpu, 2026-10-26T10:36:11Z
+git: 6cec4bb (backend sources changed since)
+image: oro-load:capacity sha256:5121ad64fa5dfae702a0bae297c7fde95996752e28fd7e19f921ae9e5fba9d67 2026-10-26T00:26:34.365114844Z
+oro: --cpus=4 --memory=2g, JAVA_OPTS -XX:MaxRAMPercentage=75 -XX:StartFlightRecording=settings=profile,delay=205s,duration=60s,filename=/tmp/oro.jfr, scan clamav
+database: oro-plans, postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2), no CPU or memory limit, settings default, data restored: 1
+docker: 10 CPUs, 16745824256 bytes, Docker Desktop
+power: Battery Power, low power mode 0
+workload: levels 3000 (ramp 60 s, hold 120 s), warm-up 200:60, streams 5000 (tracked 300), list events, busy 0/s, uploads 0.01 x 20 KB (download check 1)
+restart: none; profile: 3000 (60 s)
