@@ -18,7 +18,8 @@ import {
 } from '../../../components/Chat';
 import { Dialog, DialogSpec } from '../../../components/Dialog';
 import { Icon } from '../../../components/Icon';
-import { ActionSheet, ConversationHeader, SheetAction } from '../../../components/Nav';
+import { MenuAction, MessageMenu } from '../../../components/MessageMenu';
+import { ActionSheet, ConversationHeader } from '../../../components/Nav';
 import { Spinner } from '../../../components/States';
 import { T } from '../../../components/Text';
 import { useLive } from '../../../live/LiveProvider';
@@ -31,7 +32,6 @@ import { useBlocks } from '../../../lib/queries';
 import { useSession } from '../../../session/SessionProvider';
 import { useTheme } from '../../../theme/ThemeProvider';
 
-const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const TYPING_EVERY = 3000;
 
 type Row =
@@ -213,9 +213,9 @@ export default function ConversationScreen() {
     }
   };
 
-  const actions = (m: ChatMessage): SheetAction[] => {
+  const actions = (m: ChatMessage): MenuAction[] => {
     const own = m.senderUserId === myId;
-    const out: SheetAction[] = [];
+    const out: MenuAction[] = [];
     if (m.local === 'failed') {
       out.push({ label: 'Try again', icon: 'arrow-up', onPress: () => retry(m) }, { label: 'Delete', icon: 'trash-2', destructive: true, onPress: () => chat.discard(m.id) });
       return out;
@@ -230,7 +230,7 @@ export default function ConversationScreen() {
       } });
     }
     if (!own) {
-      out.push({ label: 'Report', icon: 'flag', destructive: true, onPress: () => router.push({ pathname: '/report', params: { conversationId: id, messageIds: m.id, userId: m.senderUserId ?? '' } }) });
+      out.push({ label: 'Report', icon: 'flag', onPress: () => router.push({ pathname: '/report', params: { conversationId: id, messageIds: m.id, userId: m.senderUserId ?? '' } }) });
     }
     if (own) {
       out.push({ label: 'Delete', icon: 'trash-2', destructive: true, onPress: () => setDialog({
@@ -409,20 +409,13 @@ export default function ConversationScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      <ActionSheet visible={!!selected} onClose={() => setSelected(null)} actions={selected ? actions(selected) : []}
-        header={selected && !selected.local ? (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 12, paddingBottom: 8 }}>
-            {REACTIONS.map((emoji) => (
-              <Pressable key={emoji} accessibilityRole="button" accessibilityLabel={`React ${emoji}`} onPress={() => {
-                const m = selected;
-                setSelected(null);
-                void react(m, emoji);
-              }} style={({ pressed }) => ({ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center',
-                backgroundColor: pressed ? colors.accentSoft : colors.surfaceRaised })}>
-                <T size={24}>{emoji}</T>
-              </Pressable>
-            ))}
-          </View>
+      <MessageMenu visible={!!selected} mine={selected?.senderUserId === myId} onClose={() => setSelected(null)}
+        actions={selected ? actions(selected) : []}
+        reacted={selected?.reactions.filter((r) => r.userIds.includes(myId)).map((r) => r.emoji)}
+        onReact={selected && !selected.local ? (emoji) => void react(selected, emoji) : undefined}
+        preview={selected ? (
+          <MessageBubble message={selected} mine={selected.senderUserId === myId} first myId={myId} delivery={delivery(selected)}
+            sender={group && selected.senderUserId !== myId ? displayName(people.get(selected.senderUserId), selected.senderUserId) : undefined} />
         ) : null} />
       <ActionSheet visible={attachOpen} onClose={() => setAttachOpen(false)} title="Attach"
         note="Up to 100 MB a file and 200 files a day. Every file is checked for threats before anyone can open it."
