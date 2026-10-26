@@ -4,7 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Linking, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '../../../api/client';
 import { oro } from '../../../api/oro';
@@ -13,7 +13,7 @@ import { Backdrop } from '../../../components/Backdrop';
 import { EmptyState } from '../../../components/Basics';
 import { Button } from '../../../components/Button';
 import {
-  ChatMessage, Composer, DateSeparator, Delivery, JumpToNew, MessageBubble, SeenLabel, SystemMessage, TypingIndicator,
+  Anchor, ChatMessage, Composer, DateSeparator, Delivery, JumpToNew, MessageBubble, SeenLabel, SystemMessage, TypingIndicator,
   UnreadSeparator,
 } from '../../../components/Chat';
 import { Dialog, DialogSpec } from '../../../components/Dialog';
@@ -62,12 +62,31 @@ export default function ConversationScreen() {
   const [text, setText] = useState('');
   const [mentions, setMentions] = useState<Map<string, string>>(new Map());
   const [editing, setEditing] = useState<ChatMessage | null>(null);
-  const [selected, setSelected] = useState<ChatMessage | null>(null);
+  const [selected, setSelected] = useState<{ message: ChatMessage; at: Anchor } | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
   const [arrived, setArrived] = useState(0);
+  // with the keyboard up, the composer sits on it: no room kept for the home indicator
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  // the newest message, once the list has drawn what was just added (or the space the keyboard took)
+  const toLatest = () => setTimeout(() => list.current?.scrollToEnd({ animated: true }), 80);
+  const scrolledUpRef = useRef(false);
+  useEffect(() => {
+    const ios = Platform.OS === 'ios';
+    const shown = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', () => {
+      setKeyboardUp(true);
+      if (!scrolledUpRef.current) {
+        setTimeout(() => list.current?.scrollToEnd({ animated: true }), 250);
+      }
+    });
+    const hidden = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
   const list = useRef<FlashListRef<Row>>(null);
   const lastTyping = useRef(0);
   const readSent = useRef(0);
@@ -169,8 +188,9 @@ export default function ConversationScreen() {
     const ids = [...mentions.entries()].filter(([username]) => body.includes(`@${username}`)).map(([, userId]) => userId);
     setMentions(new Map());
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-    list.current?.scrollToOffset({ offset: 0, animated: true });
-    problem(await chat.send(body, ids, myId), `${otherFirst} accepts`);
+    const sent = chat.send(body, ids, myId);
+    toLatest();
+    problem(await sent, `${otherFirst} accepts`);
   };
 
   const attach = async (pick: () => Promise<PickResult>) => {
@@ -190,8 +210,9 @@ export default function ConversationScreen() {
       setDialog({ icon: 'file-x', title: 'This file is too large', body: `Files can be up to 100 MB. “${result.picked.name}” is ${fileSize(result.picked.size)}.`, cancel: 'OK' });
       return;
     }
-    list.current?.scrollToOffset({ offset: 0, animated: true });
-    problem(await chat.sendFile(result.picked, myId));
+    const sent = chat.sendFile(result.picked, myId);
+    toLatest();
+    problem(await sent);
   };
 
   const react = async (m: ChatMessage, emoji: string) => {
@@ -248,7 +269,7 @@ export default function ConversationScreen() {
     return out;
   };
 
-  // the rows, newest first (the list is inverted): typing, messages with their days, where the new ones start, Seen
+  // the rows, built newest first (typing, messages with their days, where the new ones start, Seen), shown oldest first
   const rows: Row[] = (() => {
     const out: Row[] = [];
     const typing = live.typing(id).filter((u) => u !== myId);
@@ -278,7 +299,7 @@ export default function ConversationScreen() {
         out.push({ kind: 'date', key: `day-${m.createdAt.slice(0, 10)}-${m.id}`, label: dayLabel(m.createdAt) });
       }
     });
-    return out;
+    return out.reverse();
   })();
 
   const delivery = (m: ChatMessage): Delivery | undefined => {
@@ -325,14 +346,18 @@ export default function ConversationScreen() {
           ) : (
             <FlashList
               ref={list}
-              inverted
+              // a chat the FlashList 2 way: oldest first, opened at the bottom, older pages added above without a
+              // jump, and the newest followed while one is near the bottom
+              maintainVisibleContentPosition={{ startRenderingFromBottom: true, autoscrollToBottomThreshold: 0.2 }}
               data={rows}
               keyExtractor={(r) => r.key}
               getItemType={(r) => r.kind}
-              onEndReached={chat.loadOlder}
-              onEndReachedThreshold={0.5}
+              onStartReached={chat.loadOlder}
+              onStartReachedThreshold={0.5}
               onScroll={(e) => {
-                const up = e.nativeEvent.contentOffset.y > 240;
+                const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+                const up = contentSize.height - layoutMeasurement.height - contentOffset.y > 240;
+                scrolledUpRef.current = up;
                 setScrolledUp(up);
                 if (!up) {
                   setArrived(0);
@@ -342,7 +367,7 @@ export default function ConversationScreen() {
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{ paddingVertical: 8 }}
-              ListFooterComponent={waitingAccept && !group ? (
+              ListHeaderComponent={waitingAccept && !group ? (
                 <View style={{ margin: 16, padding: 14, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 4 }}>
                   <T variant="bodySmall" weight="bold">You&apos;re not contacts yet</T>
                   <T variant="bodySmall" color="textSecondary" style={{ lineHeight: 20 }}>
@@ -365,7 +390,7 @@ export default function ConversationScreen() {
                     return (
                       <MessageBubble message={m} mine={own} first={r.first} myId={myId} delivery={delivery(m)}
                         sender={group && !own ? displayName(people.get(m.senderUserId), m.senderUserId) : undefined}
-                        onLongPress={m.deleted || m.local === 'sending' ? undefined : () => setSelected(m)}
+                        onLongPress={m.deleted || m.local === 'sending' ? undefined : (at) => setSelected({ message: m, at })}
                         onRetry={() => retry(m)} onReact={(emoji) => react(m, emoji)}
                         onOpenFile={(a) => openAttachment(a).catch(() => setNotice('The file could not be opened.'))} />
                     );
@@ -374,7 +399,7 @@ export default function ConversationScreen() {
               }}
             />
           )}
-          {scrolledUp ? <JumpToNew count={arrived} onPress={() => list.current?.scrollToOffset({ offset: 0, animated: true })} /> : null}
+          {scrolledUp ? <JumpToNew count={arrived} onPress={() => list.current?.scrollToEnd({ animated: true })} /> : null}
         </View>
         {suggestions.length ? (
           <View accessibilityRole="menu" style={{ backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border }}>
@@ -400,7 +425,7 @@ export default function ConversationScreen() {
             </Pressable>
           </View>
         ) : null}
-        <View style={{ paddingBottom: insets.bottom, backgroundColor: colors.surface }}>
+        <View style={{ paddingBottom: keyboardUp ? 0 : insets.bottom, backgroundColor: colors.surface }}>
           <Composer value={text} onChangeText={typed} onSend={submit} onAttach={() => setAttachOpen(true)}
             editing={editing ? editing.body ?? '' : undefined} onCancelEdit={() => {
               setEditing(null);
@@ -409,13 +434,14 @@ export default function ConversationScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      <MessageMenu visible={!!selected} mine={selected?.senderUserId === myId} onClose={() => setSelected(null)}
-        actions={selected ? actions(selected) : []}
-        reacted={selected?.reactions.filter((r) => r.userIds.includes(myId)).map((r) => r.emoji)}
-        onReact={selected && !selected.local ? (emoji) => void react(selected, emoji) : undefined}
+      <MessageMenu visible={!!selected} mine={selected?.message.senderUserId === myId} anchor={selected?.at ?? null}
+        onClose={() => setSelected(null)} actions={selected ? actions(selected.message) : []}
+        reacted={selected?.message.reactions.filter((r) => r.userIds.includes(myId)).map((r) => r.emoji)}
+        onReact={selected && !selected.message.local ? (emoji) => void react(selected.message, emoji) : undefined}
         preview={selected ? (
-          <MessageBubble message={selected} mine={selected.senderUserId === myId} first myId={myId} delivery={delivery(selected)}
-            sender={group && selected.senderUserId !== myId ? displayName(people.get(selected.senderUserId), selected.senderUserId) : undefined} />
+          <MessageBubble bare message={selected.message} mine={selected.message.senderUserId === myId} first myId={myId}
+            delivery={delivery(selected.message)}
+            sender={group && selected.message.senderUserId !== myId ? displayName(people.get(selected.message.senderUserId), selected.message.senderUserId) : undefined} />
         ) : null} />
       <ActionSheet visible={attachOpen} onClose={() => setAttachOpen(false)} title="Attach"
         note="Up to 100 MB a file and 200 files a day. Every file is checked for threats before anyone can open it."

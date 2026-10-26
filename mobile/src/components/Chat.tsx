@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Animated, Pressable, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, HostInstance, Pressable, TextInput, View } from 'react-native';
 import { Attachment, Message, Reaction } from '../api/types';
 import { clock, fileSize } from '../lib/format';
 import { useTheme } from '../theme/ThemeProvider';
@@ -144,12 +144,17 @@ export type Delivery = 'sending' | 'failed' | 'sent' | 'seen';
  * deleted (italic, an edge), edited, files, reactions under it. A long press opens the actions; a failed one retries.
  */
 export function MessageBubble({
-  message, mine, sender, first, delivery, myId, onLongPress, onRetry, onReact, onOpenFile,
+  message, mine, sender, first, delivery, myId, onLongPress, onRetry, onReact, onOpenFile, bare,
 }: {
   message: ChatMessage; mine: boolean; sender?: string; first: boolean; delivery?: Delivery; myId?: string;
-  onLongPress?: () => void; onRetry?: () => void; onReact?: (emoji: string) => void; onOpenFile?: (a: Attachment) => void;
+  onLongPress?: (at: Anchor) => void; onRetry?: () => void; onReact?: (emoji: string) => void; onOpenFile?: (a: Attachment) => void;
+  /** the bubble alone, for the long-press menu: no row, no reactions, no retry line */
+  bare?: boolean;
 }) {
   const { colors } = useTheme();
+  const bubble = useRef<HostInstance>(null);
+  // where the bubble is on the screen, for the menu to lift it in place
+  const longPress = onLongPress && (() => bubble.current?.measureInWindow((x, y, width, height) => onLongPress({ x, y, width, height })));
   const text = mine ? 'bubbleMineText' : 'bubbleTheirsText';
   const corner = {
     borderTopLeftRadius: radius.bubble, borderTopRightRadius: radius.bubble,
@@ -189,18 +194,23 @@ export function MessageBubble({
   );
   const pad = { paddingTop: 9, paddingHorizontal: 14, paddingBottom: 7, gap: 6 };
 
+  const shape = mine ? (
+    <LinearGradient colors={[colors.bubbleMine, colors.bubbleMine2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+      style={[corner, pad, { opacity: message.local === 'sending' ? 0.85 : 1 }]}>
+      {body}
+    </LinearGradient>
+  ) : (
+    <View style={[corner, pad, { backgroundColor: colors.bubbleTheirs, borderWidth: 1, borderColor: colors.glassStroke }]}>{body}</View>
+  );
+  if (bare) {
+    return shape;
+  }
+
   return (
     <View style={{ paddingHorizontal: 16, paddingTop: first ? 6 : 2, alignItems: mine ? 'flex-end' : 'flex-start' }}>
-      <Pressable onLongPress={onLongPress} onPress={message.local === 'failed' ? onRetry : undefined} delayLongPress={300}
+      <Pressable ref={bubble} onLongPress={longPress} onPress={message.local === 'failed' ? onRetry : undefined} delayLongPress={300}
         accessibilityHint="Double tap and hold for actions" style={{ maxWidth: '80%' }}>
-        {mine ? (
-          <LinearGradient colors={[colors.bubbleMine, colors.bubbleMine2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={[corner, pad, { opacity: message.local === 'sending' ? 0.85 : 1 }]}>
-            {body}
-          </LinearGradient>
-        ) : (
-          <View style={[corner, pad, { backgroundColor: colors.bubbleTheirs, borderWidth: 1, borderColor: colors.glassStroke }]}>{body}</View>
-        )}
+        {shape}
       </Pressable>
       {message.local === 'failed' ? (
         <Pressable accessibilityRole="button" onPress={onRetry} style={{ flexDirection: 'row', gap: 4, alignItems: 'center', marginTop: 4 }}>
@@ -218,6 +228,9 @@ export function MessageBubble({
     </View>
   );
 }
+
+/** where a bubble is on the screen */
+export type Anchor = { x: number; y: number; width: number; height: number };
 
 /** SeenLabel: under my last message, who saw it */
 export function SeenLabel({ text }: { text: string }) {
