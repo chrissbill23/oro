@@ -195,8 +195,9 @@ export function MessageBubble({
   const pad = { paddingTop: 9, paddingHorizontal: 14, paddingBottom: 7, gap: 6 };
 
   const shape = mine ? (
+    // frosted grey glass: a light-to-grey sheen with the glass edge
     <LinearGradient colors={[colors.bubbleMine, colors.bubbleMine2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-      style={[corner, pad, { opacity: message.local === 'sending' ? 0.85 : 1 }]}>
+      style={[corner, pad, { borderWidth: 1, borderColor: colors.glassStroke, opacity: message.local === 'sending' ? 0.85 : 1 }]}>
       {body}
     </LinearGradient>
   ) : (
