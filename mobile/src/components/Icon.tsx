@@ -1,5 +1,5 @@
 import {
-  Archive, ArrowLeft, ArrowUp, AtSign, Ban, Bell, BellOff, Bug, Camera, Check, CheckCheck, ChevronLeft, ChevronRight,
+  Archive, ArrowDown, ArrowLeft, ArrowUp, AtSign, Ban, Bell, BellOff, Bug, Camera, Check, CheckCheck, ChevronLeft, ChevronRight,
   CircleAlert, CircleCheck, CircleDashed, CircleUserRound, CircleX, Clock, Copy, Database, Download, Ellipsis, Eye,
   EyeOff, File, FileImage, FileSpreadsheet, FileText, FileX, Flag, Image, Inbox, Info, LoaderCircle, Lock, LogOut, Mail,
   MailCheck, MessageCircle, Minus, MonitorSmartphone, Pencil, Plus, QrCode, Search, ServerCog, Share, Shield, ShieldCheck,
@@ -11,7 +11,7 @@ import { ColorName } from '../theme/tokens';
 
 /** the Lucide icons of the design, by their names there */
 const icons = {
-  archive: Archive, 'arrow-left': ArrowLeft, 'arrow-up': ArrowUp, 'at-sign': AtSign, ban: Ban, bell: Bell,
+  archive: Archive, 'arrow-down': ArrowDown, 'arrow-left': ArrowLeft, 'arrow-up': ArrowUp, 'at-sign': AtSign, ban: Ban, bell: Bell,
   'bell-off': BellOff, bug: Bug, camera: Camera, check: Check, 'check-check': CheckCheck, 'chevron-left': ChevronLeft,
   'chevron-right': ChevronRight, 'circle-alert': CircleAlert, 'circle-check': CircleCheck, 'circle-dashed': CircleDashed,
   'circle-user-round': CircleUserRound, 'circle-x': CircleX, clock: Clock, copy: Copy, database: Database,

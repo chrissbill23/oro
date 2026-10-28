@@ -242,16 +242,18 @@ export function SeenLabel({ text }: { text: string }) {
   );
 }
 
-/** JumpToNew: a pill at the bottom when new messages came while reading higher */
+/** JumpToNew: ↓ at the bottom while reading higher, "↓ 3 new" when new messages came meanwhile */
 export function JumpToNew({ count, onPress }: { count: number; onPress: () => void }) {
   const { colors } = useTheme();
   return (
-    <Pressable accessibilityRole="button" onPress={onPress}
+    <Pressable accessibilityRole="button" accessibilityLabel={count > 0 ? `${count} new, go to the latest` : 'Go to the latest'}
+      onPress={onPress}
       style={{ position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6,
-        height: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.accent,
+        height: 36, minWidth: 36, justifyContent: 'center', paddingHorizontal: count > 0 ? 14 : 0, borderRadius: 18,
+        backgroundColor: colors.accent,
         shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}>
-      <Icon name="arrow-up" size={16} color="accentContrast" />
-      <T variant="label" weight="bold" color="accentContrast">{count > 0 ? `${count} new message${count > 1 ? 's' : ''}` : 'Latest'}</T>
+      <Icon name="arrow-down" size={16} color="accentContrast" />
+      {count > 0 ? <T variant="label" weight="bold" color="accentContrast">{count} new</T> : null}
     </Pressable>
   );
 }
