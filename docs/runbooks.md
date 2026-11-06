@@ -207,7 +207,7 @@ A stolen account, someone who must lose access now.
    is never public), with Umoja's integration key, through Oro's container (the key on the input of curl, never in a
    command line):
    ```bash
-   KEY=$(grep '^UMOJA_INTEGRATION_KEY=' ~/asata/umoja/backend/.env.local | cut -d= -f2-)
+   KEY=$(docker exec umoja-umoja-1 cat /run/secrets/umoja.messaging.integration-key)
    printf 'x-integration-key: %s\n' "$KEY" | docker exec -i oro-oro-1 curl -s -w '%{http_code}\n' -X POST -H @- \
      localhost:8082/oro/internal/identities/<user id>/suspend        # 204
    unset KEY
@@ -220,8 +220,9 @@ A stolen account, someone who must lose access now.
 
 - **An integration key**: the backend README, Rotating an integration key: remove its hash (`umoja_integration_keys`),
   `dc up -d --force-recreate oro`, at once.
-- **Umoja's signing key**: a new key in `UMOJA_JWT_SIGNING_KEY`, **no** `UMOJA_JWT_PREVIOUS_KEYS` (every token signed
-  with the leaked one must die), restart Umoja, then restart Oro: Oro keeps the public keys it fetched up to 5
+- **Umoja's signing key**: a new key in `umoja_jwt_signing_key` (Infisical, `/umoja`), `umoja_jwt_previous_keys`
+  **empty** (every token signed with the leaked one must die), `deploy/compose.sh up -d --force-recreate umoja` in
+  `~/asata/umoja`, then restart Oro: Oro keeps the public keys it fetched up to 5
   minutes, a restart drops them. Everyone signs in again.
 - **Oro's signing key** (`oro_accounts_signing_key`, `/oro`): a new key, no previous one, `dc up -d --force-recreate
   oro`: every access token of Oro dies at once (Oro checks them in the process, no cache); the sessions stay, and give
@@ -261,7 +262,7 @@ wrong is undone by the next one.
 ### Rotate
 
 Integration keys every 6 to 12 months (backend README, Rotating an integration key); Umoja's signing key with
-`UMOJA_JWT_PREVIOUS_KEYS` for 15 minutes; the passwords of the logins (Deployment, Rotations).
+`umoja_jwt_previous_keys` for 15 minutes (Deployment, Rotations); the passwords of the logins (Deployment, Rotations).
 
 ### Restore
 

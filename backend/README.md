@@ -865,7 +865,8 @@ Oro accepts every key listed for a product, so a key changes without a failed re
 2. Add it to Oro next to the current one, `UMOJA_INTEGRATION_KEYS=current:<old hash>,next:<new hash>`, and restart
    Oro (in production: the secret `umoja_integration_keys` in Infisical, then
    `deploy/compose.sh up -d --force-recreate oro`; a restart keeps the old value).
-3. Give the key to Umoja (`UMOJA_INTEGRATION_KEY` in `umoja/backend/.env.local`, or its secret store) and restart it.
+3. Give the key to Umoja (`UMOJA_INTEGRATION_KEY` in `umoja/backend/.env.local`; in production the secret
+   `umoja_integration_key` in Infisical, `/umoja`, then `deploy/compose.sh up -d --force-recreate umoja`) and restart it.
    The logs of Oro show `authenticated with its key next`.
 4. Remove the old hash from Oro (`UMOJA_INTEGRATION_KEYS=next:<new hash>`) and restart it (re-create it, in
    production).

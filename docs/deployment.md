@@ -11,10 +11,10 @@ machine:
 
 Each has a `docker-compose.production.yml` over its `docker-compose.yml`. When something goes wrong: the
 [runbooks](runbooks.md), one per alert. Only Caddy opens ports (80 and 443); every
-other service talks on the Docker network `asataDB`. The settings and the secrets of the database and of Oro come from
-Infisical, never from a file of the server (no `.env`, no `secrets/`): every production compose command of these two
-is `deploy/compose.sh <compose arguments>`, never `docker compose` directly (the database reads the folder `/database`,
-Oro `/database` and `/oro`). The secrets reach the services as Docker secrets (files in `/run/secrets`), never in an
+other service talks on the Docker network `asataDB`. The settings and the secrets of the three come from Infisical,
+never from a file of the server (no `.env`, no `secrets/`): every production compose command is
+`deploy/compose.sh <compose arguments>`, never `docker compose` directly (the database reads the folder `/database`,
+Oro `/database` and `/oro`, Umoja `/database` and `/umoja`). The secrets reach the services as Docker secrets (files in `/run/secrets`), never in an
 image nor an environment.
 
 ## The server, once
@@ -80,8 +80,10 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -to
 # the key of the notifications, Web Push (lost, every browser subscribes again)
 openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 \
   | tr -d '\n' | put /oro oro_push_vapid_private_key
-UMOJA_KEY=$(openssl rand -hex 32)                 # Umoja's, in step 3; Oro keeps its hash only
+UMOJA_KEY=$(openssl rand -hex 32)                 # Umoja's (/umoja); Oro keeps its hash only
+printf %s "$UMOJA_KEY" | put /umoja umoja_integration_key
 printf 'current:%s' "$(printf %s "$UMOJA_KEY" | shasum -a 256 | cut -d' ' -f1)" | put /oro umoja_integration_keys
+unset UMOJA_KEY
 mkpass | put /oro files_backup_password
 read -rs SMTP_PASSWORD; printf %s "$SMTP_PASSWORD" | put /oro smtp_password; unset SMTP_PASSWORD
 printf %s '...' | put /oro ORO_FILES_BACKUP_S3_SECRET
@@ -106,14 +108,22 @@ Give Alertmanager a receiver that reaches someone (`monitoring/alertmanager.yml`
 
 ## 3. Umoja and the edge
 
+Umoja logs in to the database as its superuser (`postgres_password`, `/database`); its integration key is in
+`/umoja` since step 2.
+
 ```bash
 cd ~/asata/umoja
-cat >> backend/.env.local <<EOF
-UMOJA_JWT_SIGNING_KEY=$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 | tr -d '\n')
-UMOJA_INTEGRATION_KEY=$UMOJA_KEY
-EOF
-ASATA_DOMAIN=umoja.example.org ACME_EMAIL=ops@example.org \
-  docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 \
+  | tr -d '\n' | put /umoja umoja_jwt_signing_key
+# the API key of the application umoja in Sululu (sululu/docs/deployment.md), or empty: the notifications only logged
+read -rs SULULU_KEY; printf %s "$SULULU_KEY" | put /umoja umoja_sululu_api_key; unset SULULU_KEY
+# empty until needed: a rotation of the signing key, the CDN (then UMOJA_CDN_ENABLED=true and its settings too)
+printf '' | put /umoja umoja_jwt_previous_keys
+printf '' | put /umoja umoja_cdn_secret_key
+infisical secrets set --silent --env=prod --projectId="$PROJECT" --path=/umoja \
+  ASATA_DOMAIN=umoja.example.org ACME_EMAIL=ops@example.org >/dev/null
+deploy/compose.sh config --quiet
+deploy/compose.sh up -d --build
 ```
 
 Caddy gets the certificate at its first start. Then check from outside: `https://umoja.example.org` answers,
@@ -141,8 +151,9 @@ data, by a point-in-time recovery (`1_ASATA_DATABASE/README.md`, then the backen
 
 ## Rotations
 
-The integration key: the backend README, Rotating an integration key. The signing key of Umoja: the new one in
-`UMOJA_JWT_SIGNING_KEY`, the former in `UMOJA_JWT_PREVIOUS_KEYS` for 15 minutes, then removed. The passwords of the
+The integration key: the backend README, Rotating an integration key. The signing key of Umoja (`/umoja`): the new one
+in `umoja_jwt_signing_key`, the former in `umoja_jwt_previous_keys` for 15 minutes, then emptied, each time followed by
+`deploy/compose.sh up -d --force-recreate umoja` in `~/asata/umoja`. The passwords of the
 logins: a new value in Infisical (`/database`, one copy for both stacks), then the containers that read it created
 again (a restart keeps the old value): the database first, `production-logins.sql` again, then Oro:
 
