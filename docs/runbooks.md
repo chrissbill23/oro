@@ -11,8 +11,13 @@ ones were rehearsed, and where.
 - **The server**: `ssh` to it. Prometheus and Alertmanager listen on 127.0.0.1 only:
   `ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 <server>`, then http://localhost:9090/alerts and
   http://localhost:9093.
-- **Compose**: in each repository, `dc` below is `docker compose -f docker-compose.yml -f docker-compose.production.yml`
-  (`alias dc='docker compose -f docker-compose.yml -f docker-compose.production.yml'`).
+- **Compose**: in each repository, `dc` below is `deploy/compose.sh` (`alias dc=deploy/compose.sh`): every production
+  compose command goes through it, the settings and the secrets from Infisical
+  ([`INFISICAL.md`](../../1_ASATA_DATABASE/INFISICAL.md)). A secret changed in Infisical reaches a container only
+  when it is created again: `dc up -d --force-recreate <services>` (`restart`, and `up -d` alone, keep the old value);
+  a changed setting, by `dc up -d`.
+- **Infisical unreachable** (its outage, the server's network): `dc` runs nothing. The containers go on; `docker ps`,
+  `docker logs oro-oro-1`, `docker exec oro-oro-1 ...` and `docker restart <container>` work without it.
 - **Logs**: JSON, one line per event. Errors of the last 30 minutes:
   `dc logs --since 30m oro | grep '"level":"ERROR"'`. A user reports a failure: the error they got carries a
   `requestId`; `dc logs oro | grep '<requestId>'` gives every line of that request (`x-request-id`). Logs never hold
@@ -74,8 +79,8 @@ if the memory allows (`docker stats oro-oro-1`), and Oro restarted.
 Oro cannot read its gauges from the database for 5 minutes: the database, or the worker's login.
 
 1. `docker exec oro-oro-1 curl -s localhost:9082/actuator/health/readiness`: `DOWN`, see [Database down](#database-down).
-2. Up: the worker's login (`oro_worker`): its password in `secrets/oro_worker_db_password` and in the database
-   (`production-logins.sql`), its connections (`dc logs oro | grep oro-system`).
+2. Up: the worker's login (`oro_worker`): its password in Infisical (`/database`, `oro_worker_db_password`) and in the
+   database (`production-logins.sql`), its connections (`dc logs oro | grep oro-system`).
 
 ### OroOutboxLag (critical)
 
@@ -152,8 +157,9 @@ The weekly restore check of the backups (`what`: `database` or `files`) has not 
 No snapshot of the files for 3 hours.
 
 1. `dc logs --tail 100 files-backup` (in `oro`): `snapshot FAILED`, `forget FAILED` and why (the bucket, its keys,
-   `secrets/files_backup_password`).
-2. Fixed: `dc restart files-backup` takes a snapshot at once.
+   `files_backup_password`).
+2. Fixed: `dc restart files-backup` takes a snapshot at once (`dc up -d --force-recreate files-backup` after a change
+   in Infisical).
 
 ## Situations
 
@@ -187,8 +193,9 @@ docker exec asata-postgres-1 sh -c 'du -sh "$PGDATA"/pg_wal "$PGDATA"'   # the d
 People sign up but get no link, or no reset.
 
 1. `dc logs --since 1h oro | grep "could not be sent"`: the SMTP server refused or was away (the class of the error).
-2. The settings: `ORO_SMTP_HOST`, `ORO_SMTP_USERNAME`, `secrets/smtp_password`; the provider's dashboard (bounces,
-   a suspended account, the sender's domain not verified: SPF, DKIM).
+2. The settings: `ORO_SMTP_HOST`, `ORO_SMTP_USERNAME`, `smtp_password` (Infisical, `/oro`; changed: `dc up -d
+   --force-recreate oro`); the provider's dashboard (bounces, a suspended account, the sender's domain not verified:
+   SPF, DKIM).
 3. Sent but in spam: the sender's domain at the provider.
 4. Fixed: people ask for a new link (`POST /auth/verify-email/resend`); nothing is lost.
 
@@ -211,15 +218,16 @@ A stolen account, someone who must lose access now.
 
 ### A key leaked
 
-- **An integration key**: the backend README, Rotating an integration key: remove its hash, restart Oro, at once.
+- **An integration key**: the backend README, Rotating an integration key: remove its hash (`umoja_integration_keys`),
+  `dc up -d --force-recreate oro`, at once.
 - **Umoja's signing key**: a new key in `UMOJA_JWT_SIGNING_KEY`, **no** `UMOJA_JWT_PREVIOUS_KEYS` (every token signed
   with the leaked one must die), restart Umoja, then restart Oro: Oro keeps the public keys it fetched up to 5
   minutes, a restart drops them. Everyone signs in again.
-- **Oro's signing key** (`secrets/oro_accounts_signing_key`): a new key, no previous one, restart Oro: every
-  access token of Oro dies at once (Oro checks them in the process, no cache); the sessions stay, and give new tokens
-  with the new key.
-- **A password of a database login**: a new file in `secrets/` of both repositories, `production-logins.sql`, restart
-  Oro (Deployment, Rotations).
+- **Oro's signing key** (`oro_accounts_signing_key`, `/oro`): a new key, no previous one, `dc up -d --force-recreate
+  oro`: every access token of Oro dies at once (Oro checks them in the process, no cache); the sessions stay, and give
+  new tokens with the new key.
+- **A password of a database login**: a new value in Infisical (`/database`), the database re-created,
+  `production-logins.sql`, then `dc up -d --force-recreate oro` (Deployment, Rotations).
 - **The passphrase of a backup**: the backups made with it are readable by whoever has it and the bucket. Rotate the
   bucket's keys first (the bucket is the other half); then a new repository with a new passphrase, a full backup,
   and the old repository deleted once the new one is checked.

@@ -11,17 +11,33 @@ machine:
 
 Each has a `docker-compose.production.yml` over its `docker-compose.yml`. When something goes wrong: the
 [runbooks](runbooks.md), one per alert. Only Caddy opens ports (80 and 443); every
-other service talks on the Docker network `asataDB`. The secrets are files in `secrets/` (git ignored, mode 600), read
-by the services as Docker secrets, never in an image nor an environment.
+other service talks on the Docker network `asataDB`. The settings and the secrets of the database and of Oro come from
+Infisical, never from a file of the server (no `.env`, no `secrets/`): every production compose command of these two
+is `deploy/compose.sh <compose arguments>`, never `docker compose` directly (the database reads the folder `/database`,
+Oro `/database` and `/oro`). The secrets reach the services as Docker secrets (files in `/run/secrets`), never in an
+image nor an environment.
 
 ## The server, once
 
 - Docker with Compose 2.24 or later (`!reset`, `!override`), a DNS record of the domain to the server, ports 80 and 443
   open, nothing else.
 - Two S3 buckets off the server (the backups of the database, of the files), and their keys.
-- A vault for the secrets below: they are the only copy that matters, the files on the server are copies of them.
+- The Infisical project, its CLI and the server's machine identity (`/etc/asata/infisical.env`), as in
+  [`INFISICAL.md`](../../1_ASATA_DATABASE/INFISICAL.md). The values below are its variables, the only copy: the server
+  keeps none.
+
+The values are written to Infisical as an operator of the project (`infisical login --interactive`, an account that can
+write; never the machine identity), each one read from the standard input, never on a command line nor left on the
+disk, without a trailing newline:
 
 ```bash
+export INFISICAL_DOMAIN=https://eu.infisical.com   # the project's region
+PROJECT=<the project's ID>
+put() {   # put <folder> <name>: the standard input as the value
+    f=$(mktemp); cat > "$f"
+    infisical secrets set --silent --env=prod --projectId="$PROJECT" --path="$1" "$2=@$f" >/dev/null
+    shred -u "$f"
+}
 mkpass() { openssl rand -base64 36 | tr -d '\n/+=' ; }
 umask 077
 ```
@@ -30,66 +46,54 @@ umask 077
 
 ```bash
 cd ~/asata/1_ASATA_DATABASE
-mkdir -p secrets
-mkpass > secrets/postgres_password
-mkpass > secrets/oro_api_db_password
-mkpass > secrets/oro_worker_db_password
-mkpass > secrets/oro_auth_db_password
-cat > .env <<EOF
-POSTGRES_USER=postgres
-PGBACKREST_CIPHER_PASS=$(mkpass)
-PGBACKREST_REPO1_S3_BUCKET=...
-PGBACKREST_REPO1_S3_ENDPOINT=...
-PGBACKREST_REPO1_S3_REGION=...
-PGBACKREST_REPO1_S3_KEY=...
-PGBACKREST_REPO1_S3_KEY_SECRET=...
-EOF
-docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+# the superuser, Oro's three logins (Oro reads the same values: one copy), the passphrase of the backups
+for name in postgres_password oro_api_db_password oro_worker_db_password oro_auth_db_password PGBACKREST_CIPHER_PASS; do
+    mkpass | put /database "$name"
+done
+printf %s '...' | put /database PGBACKREST_REPO1_S3_KEY_SECRET
+infisical secrets set --silent --env=prod --projectId="$PROJECT" --path=/database PGBACKREST_REPO1_S3_BUCKET=... \
+  PGBACKREST_REPO1_S3_ENDPOINT=... PGBACKREST_REPO1_S3_REGION=... PGBACKREST_REPO1_S3_KEY=... >/dev/null
+deploy/compose.sh config --quiet                 # every setting and secret present in Infisical (nothing printed)
+deploy/compose.sh up -d --build
 ```
 
 The first start creates the schemas and the reference data, never the data of development. Then the logins of Oro,
-with the passwords of `secrets/`:
+with the passwords of `/database` (files in `/run/secrets` of the container):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.production.yml exec postgres \
+deploy/compose.sh exec postgres \
   sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d asata -f /oro-schema/oro/production-logins.sql'
-docker compose logs backup                       # "full backup done"
+deploy/compose.sh logs backup                    # "full backup done"
 ```
 
 An hour after the first start, and every week, the service `restore-check` restores the latest backup and checks it
-(`docker compose logs restore-check`: "done"): keep as much free disk as the database for it.
+(`deploy/compose.sh logs restore-check`: "done"): keep as much free disk as the database for it.
 
 ## 2. Oro
 
 ```bash
 cd ~/asata/oro
-mkdir -p secrets
-cp ../1_ASATA_DATABASE/secrets/oro_api_db_password ../1_ASATA_DATABASE/secrets/oro_worker_db_password \
-   ../1_ASATA_DATABASE/secrets/oro_auth_db_password secrets/
-# the key that signs the tokens of Oro's accounts: in the vault too (lost, everyone signs in again)
+# Oro's three logins: already in /database (step 1), nothing to copy
+# the key that signs the tokens of Oro's accounts (lost, everyone signs in again)
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 \
-  | tr -d '\n' > secrets/oro_accounts_signing_key
-# the key of the notifications (Web Push): in the vault too (lost, every browser subscribes again)
+  | tr -d '\n' | put /oro oro_accounts_signing_key
+# the key of the notifications, Web Push (lost, every browser subscribes again)
 openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 \
-  | tr -d '\n' > secrets/oro_push_vapid_private_key
+  | tr -d '\n' | put /oro oro_push_vapid_private_key
 UMOJA_KEY=$(openssl rand -hex 32)                 # Umoja's, in step 3; Oro keeps its hash only
-printf 'current:%s' "$(printf %s "$UMOJA_KEY" | shasum -a 256 | cut -d' ' -f1)" > secrets/umoja_integration_keys
-mkpass > secrets/files_backup_password
-printf %s '<the SMTP password of the provider>' > secrets/smtp_password
-cat > backend/.env.local <<EOF
-ORO_CORS_ALLOWED_ORIGINS=https://umoja.example.org
-ORO_SMTP_HOST=smtp.provider.example
-ORO_SMTP_USERNAME=...
-ORO_ACCOUNTS_LINK_BASE=https://oro.example.org
-ORO_ACCOUNTS_MAIL_FROM=Oro <no-reply@oro.example.org>
-ORO_PUSH_SUBJECT=mailto:ops@oro.example.org
-ORO_FILES_BACKUP_REPOSITORY=s3:<endpoint>/<bucket>/oro-files
-ORO_FILES_BACKUP_S3_KEY=...
-ORO_FILES_BACKUP_S3_SECRET=...
-EOF
-docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
-docker compose logs oro | grep "production settings checked"
-docker compose ps oro                             # "healthy": ready, the database answering
+printf 'current:%s' "$(printf %s "$UMOJA_KEY" | shasum -a 256 | cut -d' ' -f1)" | put /oro umoja_integration_keys
+mkpass | put /oro files_backup_password
+read -rs SMTP_PASSWORD; printf %s "$SMTP_PASSWORD" | put /oro smtp_password; unset SMTP_PASSWORD
+printf %s '...' | put /oro ORO_FILES_BACKUP_S3_SECRET
+infisical secrets set --silent --env=prod --projectId="$PROJECT" --path=/oro \
+  ORO_CORS_ALLOWED_ORIGINS=https://umoja.example.org ORO_SMTP_HOST=smtp.provider.example ORO_SMTP_USERNAME=... \
+  ORO_ACCOUNTS_LINK_BASE=https://oro.example.org 'ORO_ACCOUNTS_MAIL_FROM=Oro <no-reply@oro.example.org>' \
+  ORO_PUSH_SUBJECT=mailto:ops@oro.example.org 'ORO_FILES_BACKUP_REPOSITORY=s3:<endpoint>/<bucket>/oro-files' \
+  ORO_FILES_BACKUP_S3_KEY=... >/dev/null
+deploy/compose.sh config --quiet                  # every setting and secret present in Infisical (nothing printed)
+deploy/compose.sh up -d --build
+deploy/compose.sh logs oro | grep "production settings checked"
+deploy/compose.sh ps oro                          # "healthy": ready, the database answering
 ```
 
 Oro refuses to start in production on a setting of development (`ProductionChecks`): a placeholder or short password,
@@ -122,12 +126,12 @@ Caddy gets the certificate at its first start. Then check from outside: `https:/
 2. The schema first, when it changed: `oro/migrate.sh` (its migrations are expand-only, `oro/migrations/README.md`):
    ```bash
    cd ~/asata/1_ASATA_DATABASE && git pull
-   docker compose -f docker-compose.yml -f docker-compose.production.yml exec postgres \
+   deploy/compose.sh exec postgres \
      sh -c 'PSQL_ARGS="-U $POSTGRES_USER -d asata" sh /oro-schema/oro/migrate.sh'
    ```
-3. Then Oro: `git pull` and `docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build oro`.
-   The stop is graceful (the streams told to reconnect, the requests in flight finished, 45 s at most), and the
-   streams reconnect by themselves. Wait for `healthy` (`docker compose ps oro`) before calling it done.
+3. Then Oro: `git pull` and `deploy/compose.sh up -d --build oro`. The stop is graceful (the streams told to
+   reconnect, the requests in flight finished, 45 s at most), and the streams reconnect by themselves. Wait for
+   `healthy` (`deploy/compose.sh ps oro`) before calling it done.
 
 ## Rollbacks
 
@@ -139,4 +143,16 @@ data, by a point-in-time recovery (`1_ASATA_DATABASE/README.md`, then the backen
 
 The integration key: the backend README, Rotating an integration key. The signing key of Umoja: the new one in
 `UMOJA_JWT_SIGNING_KEY`, the former in `UMOJA_JWT_PREVIOUS_KEYS` for 15 minutes, then removed. The passwords of the
-logins: a new file in `secrets/` of both repositories, `production-logins.sql` again, Oro restarted.
+logins: a new value in Infisical (`/database`, one copy for both stacks), then the containers that read it created
+again (a restart keeps the old value): the database first, `production-logins.sql` again, then Oro:
+
+```bash
+cd ~/asata/1_ASATA_DATABASE
+deploy/compose.sh up -d --force-recreate postgres
+deploy/compose.sh exec postgres \
+  sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d asata -f /oro-schema/oro/production-logins.sql'
+cd ~/asata/oro && deploy/compose.sh up -d --force-recreate oro
+```
+
+Any other secret or setting of Oro changed in Infisical: `deploy/compose.sh up -d --force-recreate <the services that
+read it>`.

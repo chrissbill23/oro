@@ -1,8 +1,11 @@
-# Oro in production, on a server with Docker Compose: over docker-compose.yml,
-#   docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
-# The production profile (ProductionChecks refuses a setting of development), the secrets as files (secrets/, git
-# ignored, mode 600: one per secret, see docs/deployment.md), nothing published: the browsers reach Oro through the proxy
-# of a product (Umoja's nginx, behind Caddy), Prometheus and Alertmanager on 127.0.0.1 only (an SSH tunnel).
+# Oro in production, on a server with Docker Compose: over docker-compose.yml, through deploy/compose.sh (never docker
+# compose directly: the settings and the secrets come from Infisical, the folders /database and /oro,
+# ../1_ASATA_DATABASE/INFISICAL.md):
+#   deploy/compose.sh up -d --build
+# The production profile (ProductionChecks refuses a setting of development), the secrets as files inside the
+# containers (from Infisical, never on the disk nor in an environment: see docs/deployment.md), nothing published: the
+# browsers reach Oro through the proxy of a product (Umoja's nginx, behind Caddy), Prometheus and Alertmanager on
+# 127.0.0.1 only (an SSH tunnel).
 # the logs of every container rotated: 5 files of 50 MB at most (json-file keeps them all otherwise, until the disk is
 # full)
 x-logging: &logging
@@ -40,7 +43,7 @@ services:
       ORO_ACCOUNTS_LINK_BASE: ${ORO_ACCOUNTS_LINK_BASE:?the HTTPS address of the Oro app, e.g. https://oro.example.org}
       ORO_ACCOUNTS_MAIL_FROM: ${ORO_ACCOUNTS_MAIL_FROM:?the sender, e.g. Oro <no-reply@oro.example.org>}
       # who the push services contact about Oro's notifications
-      ORO_PUSH_SUBJECT: ${ORO_PUSH_SUBJECT:?a mailto: or https: contact, e.g. mailto:ops@oro.example.org}
+      ORO_PUSH_SUBJECT: ${ORO_PUSH_SUBJECT:?a mailto or https contact, e.g. mailto:ops@oro.example.org}
       ORO_OUTBOX_ENABLED: "true"
       ORO_API_DOCS: "false"
       UMOJA_JWKS_URI: http://umoja:8080/umoja/.well-known/jwks.json
@@ -82,21 +85,25 @@ services:
     secrets:
       - files_backup_password
 
+# the secrets: each one the variable of Infisical of the same name (lowercase: no compose file reads such a name),
+# given by deploy/compose.sh; unset, compose refuses to start. Values without a trailing newline
 secrets:
+  # /database: Oro's logins, the same values as the database stack's
   oro_api_db_password:
-    file: ./secrets/oro_api_db_password
+    environment: oro_api_db_password
   oro_worker_db_password:
-    file: ./secrets/oro_worker_db_password
+    environment: oro_worker_db_password
   oro_auth_db_password:
-    file: ./secrets/oro_auth_db_password
+    environment: oro_auth_db_password
+  # /oro
   oro_accounts_signing_key:
-    file: ./secrets/oro_accounts_signing_key
+    environment: oro_accounts_signing_key
   smtp_password:
-    file: ./secrets/smtp_password
+    environment: smtp_password
   oro_push_vapid_private_key:
-    file: ./secrets/oro_push_vapid_private_key
+    environment: oro_push_vapid_private_key
   # name:sha256 of each key, comma separated (never the keys)
   umoja_integration_keys:
-    file: ./secrets/umoja_integration_keys
+    environment: umoja_integration_keys
   files_backup_password:
-    file: ./secrets/files_backup_password
+    environment: files_backup_password
