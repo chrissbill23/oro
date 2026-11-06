@@ -46,8 +46,10 @@ umask 077
 
 ```bash
 cd ~/asata/1_ASATA_DATABASE
-# the superuser, Oro's three logins (Oro reads the same values: one copy), the passphrase of the backups
-for name in postgres_password oro_api_db_password oro_worker_db_password oro_auth_db_password PGBACKREST_CIPHER_PASS; do
+# the superuser, Oro's three logins and Umoja's (each product reads the same value: one copy), the passphrase of
+# the backups
+for name in postgres_password oro_api_db_password oro_worker_db_password oro_auth_db_password umoja_api_db_password \
+    PGBACKREST_CIPHER_PASS; do
     mkpass | put /database "$name"
 done
 printf %s '...' | put /database PGBACKREST_REPO1_S3_KEY_SECRET
@@ -57,12 +59,14 @@ deploy/compose.sh config --quiet                 # every setting and secret pres
 deploy/compose.sh up -d --build
 ```
 
-The first start creates the schemas and the reference data, never the data of development. Then the logins of Oro,
-with the passwords of `/database` (files in `/run/secrets` of the container):
+The first start creates the schemas and the reference data, never the data of development. Then the logins of Oro
+and Umoja, with the passwords of `/database` (files in `/run/secrets` of the container):
 
 ```bash
 deploy/compose.sh exec postgres \
   sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d asata -f /oro-schema/oro/production-logins.sql'
+deploy/compose.sh exec postgres \
+  sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d asata -f /umoja-schema/umoja/production-logins.sql'
 deploy/compose.sh logs backup                    # "full backup done"
 ```
 
@@ -108,8 +112,8 @@ Give Alertmanager a receiver that reaches someone (`monitoring/alertmanager.yml`
 
 ## 3. Umoja and the edge
 
-Umoja logs in to the database as its superuser (`postgres_password`, `/database`); its integration key is in
-`/umoja` since step 2.
+Umoja logs in to the database as `umoja_api` (step 1, never the superuser); its integration key is in `/umoja` since
+step 2.
 
 ```bash
 cd ~/asata/umoja
@@ -155,7 +159,8 @@ The integration key: the backend README, Rotating an integration key. The signin
 in `umoja_jwt_signing_key`, the former in `umoja_jwt_previous_keys` for 15 minutes, then emptied, each time followed by
 `deploy/compose.sh up -d --force-recreate umoja` in `~/asata/umoja`. The passwords of the
 logins: a new value in Infisical (`/database`, one copy for both stacks), then the containers that read it created
-again (a restart keeps the old value): the database first, `production-logins.sql` again, then Oro:
+again (a restart keeps the old value): the database first, `production-logins.sql` again, then Oro (Umoja's:
+`/umoja-schema/umoja/production-logins.sql`, then `deploy/compose.sh up -d --force-recreate umoja` in `~/asata/umoja`):
 
 ```bash
 cd ~/asata/1_ASATA_DATABASE
