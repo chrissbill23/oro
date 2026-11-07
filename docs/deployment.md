@@ -6,15 +6,16 @@ machine:
 ```text
 ~/asata/1_ASATA_DATABASE   the database (PostgreSQL 17, its backups)
 ~/asata/oro                Oro (its backend, ClamAV, the backups of its files, Prometheus, Alertmanager)
-~/asata/umoja              Umoja (its backend, its frontend, Caddy in front)
+~/asata/umoja              Umoja (its backend, its frontend)
 ```
 
 Each has a `docker-compose.production.yml` over its `docker-compose.yml`. When something goes wrong: the
-[runbooks](runbooks.md), one per alert. Only Caddy opens ports (80 and 443); every
-other service talks on the Docker network `asataDB`. The settings and the secrets of the three come from Infisical,
+[runbooks](runbooks.md), one per alert. Only the Caddy of the server opens ports (80 and 443):
+[`1_ASATA_DATABASE/edge`](../../1_ASATA_DATABASE/edge/README.md), in front of every product, which reaches Oro through
+Umoja's nginx; every other service talks on the Docker network `asataDB`. The settings and the secrets of the three come from Infisical,
 never from a file of the server (no `.env`, no `secrets/`): every production compose command is
 `deploy/compose.sh <compose arguments>`, never `docker compose` directly (the database reads the folder `/database`,
-Oro `/database` and `/oro`, Umoja `/database` and `/umoja`). The secrets reach the services as Docker secrets (files in `/run/secrets`), never in an
+Oro `/database` and `/oro`, Umoja `/database`, `/edge` and `/umoja`). The secrets reach the services as Docker secrets (files in `/run/secrets`), never in an
 image nor an environment.
 
 ## The server, once
@@ -124,8 +125,11 @@ read -rs SULULU_KEY; printf %s "$SULULU_KEY" | put /umoja umoja_sululu_api_key; 
 # empty until needed: a rotation of the signing key, the CDN (then UMOJA_CDN_ENABLED=true and its settings too)
 printf '' | put /umoja umoja_jwt_previous_keys
 printf '' | put /umoja umoja_cdn_secret_key
-infisical secrets set --silent --env=prod --projectId="$PROJECT" --path=/umoja \
-  ASATA_DOMAIN=umoja.example.org ACME_EMAIL=ops@example.org >/dev/null
+# the domains, read by the Caddy of the server and the products (1_ASATA_DATABASE/edge/README.md)
+infisical secrets set --silent --env=prod --projectId="$PROJECT" --path=/edge ACME_EMAIL=ops@example.org \
+  UMOJA_DOMAIN=umoja.example.org MOKILI_DOMAIN=mokili.tech SULULU_DOMAIN=notify.mokili.tech >/dev/null
+# the Caddy of the server first: it creates the network asataEdgeUmoja the frontend joins (once per server)
+(cd ../1_ASATA_DATABASE && edge/compose.sh up -d)
 deploy/compose.sh config --quiet
 deploy/compose.sh up -d --build
 ```

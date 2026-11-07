@@ -3,7 +3,7 @@
 Oro is the messaging service of Asata, shared by two products: Oro (personal messaging) and Umoja (business
 messaging inside an organization). The backend is Spring Boot 4.1 on Java 25, with Spring Data JPA (Hibernate 7) on the
 shared PostgreSQL 17 database. It runs on Docker at `http://localhost:8082/oro` in development, and behind Umoja's
-Caddy in production ([Deployment](deployment.md)).
+nginx and the Caddy of the server in production (`1_ASATA_DATABASE/edge`, [Deployment](deployment.md)).
 
 ## Features
 
